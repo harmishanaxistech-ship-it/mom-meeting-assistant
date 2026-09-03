@@ -28,6 +28,9 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
   late TextEditingController _conclusionController;
   List<TextEditingController> _discussionControllers = [];
   List<TextEditingController> _decisionControllers = [];
+  List<TextEditingController> _nextStepsControllers = [];
+  List<TextEditingController> _pendingItemsControllers = [];
+  List<TextEditingController> _risksControllers = [];
 
   @override
   void initState() {
@@ -45,6 +48,15 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       c.dispose();
     }
     for (var c in _decisionControllers) {
+      c.dispose();
+    }
+    for (var c in _nextStepsControllers) {
+      c.dispose();
+    }
+    for (var c in _pendingItemsControllers) {
+      c.dispose();
+    }
+    for (var c in _risksControllers) {
       c.dispose();
     }
     super.dispose();
@@ -83,73 +95,116 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     _summaryController.text = mom['meetingSummary'] ?? '';
     _conclusionController.text = mom['conclusion'] ?? '';
 
+    // Clear old controllers
     for (var c in _discussionControllers) {
       c.dispose();
     }
     for (var c in _decisionControllers) {
       c.dispose();
     }
+    for (var c in _nextStepsControllers) {
+      c.dispose();
+    }
+    for (var c in _pendingItemsControllers) {
+      c.dispose();
+    }
+    for (var c in _risksControllers) {
+      c.dispose();
+    }
 
-    final points = (mom['keyDiscussionPoints'] as List<dynamic>?) ?? [];
-    _discussionControllers =
-        points.map((p) => TextEditingController(text: p.toString())).toList();
+    _discussionControllers = [];
+    if (mom['keyDiscussionPoints'] != null) {
+      for (var point in mom['keyDiscussionPoints']) {
+        _discussionControllers.add(TextEditingController(text: point.toString()));
+      }
+    }
 
-    final decisions = (mom['decisions'] as List<dynamic>?) ?? [];
-    _decisionControllers =
-        decisions.map((d) => TextEditingController(text: d.toString())).toList();
+    _decisionControllers = [];
+    if (mom['decisions'] != null) {
+      for (var dec in mom['decisions']) {
+        _decisionControllers.add(TextEditingController(text: dec.toString()));
+      }
+    }
+
+    _nextStepsControllers = [];
+    if (mom['nextSteps'] != null) {
+      for (var step in mom['nextSteps']) {
+        _nextStepsControllers.add(TextEditingController(text: step.toString()));
+      }
+    }
+
+    _pendingItemsControllers = [];
+    if (mom['pendingItems'] != null) {
+      for (var p in mom['pendingItems']) {
+        _pendingItemsControllers.add(TextEditingController(text: p.toString()));
+      }
+    }
+
+    _risksControllers = [];
+    if (mom['risks'] != null) {
+      for (var r in mom['risks']) {
+        _risksControllers.add(TextEditingController(text: r.toString()));
+      }
+    }
   }
 
-  Future<void> _saveMOMEdits() async {
-    if (!mounted) return;
+  Future<void> _saveChanges() async {
     setState(() => _isSaving = true);
-
     try {
       final client = ApiClient();
-      final updatedPoints =
-          _discussionControllers.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
-      final updatedDecisions =
-          _decisionControllers.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+      final updatedMom = {
+        'meetingSummary': _summaryController.text,
+        'conclusion': _conclusionController.text,
+        'keyDiscussionPoints': _discussionControllers.map((c) => c.text).toList(),
+        'decisions': _decisionControllers.map((c) => c.text).toList(),
+        'nextSteps': _nextStepsControllers.map((c) => c.text).toList(),
+        'pendingItems': _pendingItemsControllers.map((c) => c.text).toList(),
+        'risks': _risksControllers.map((c) => c.text).toList(),
+      };
 
       final res = await client.dio.put(
         '${ApiConstants.meetings}/${widget.meetingId}/mom',
-        data: {
-          'meetingSummary': _summaryController.text.trim(),
-          'conclusion': _conclusionController.text.trim(),
-          'keyDiscussionPoints': updatedPoints,
-          'decisions': updatedDecisions,
-          'actionItems': _mom?['actionItems'] ?? [],
-        },
+        data: updatedMom,
       );
 
       if (res.data['success'] == true && mounted) {
-        final savedMom = res.data['data']['mom'];
-        setState(() {
-          _mom = savedMom;
-          _isSaving = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
+            content: Text('MOM changes saved successfully!'),
             backgroundColor: AppTheme.accentColor,
-            content: Text('✓ Changes saved successfully!'),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save error: ${e.toString()}')),
+          SnackBar(
+            content: Text('Failed to save changes: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _changeLanguage(String lang) async {
-    if (lang == _selectedLanguage || !mounted) return;
-    setState(() {
-      _isTranslating = true;
-    });
+    if (_selectedLanguage == lang || _isTranslating) return;
 
+    // Check if translation is cached in _mom
+    if (_mom != null &&
+        _mom!['translations'] != null &&
+        _mom!['translations'][lang] != null) {
+      final cached = Map<String, dynamic>.from(_mom!['translations'][lang]);
+      _populateControllers(cached);
+      setState(() {
+        _selectedLanguage = lang;
+      });
+      return;
+    }
+
+    setState(() => _isTranslating = true);
     try {
       final client = ApiClient();
       final res = await client.dio.post(
@@ -158,63 +213,68 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       );
 
       if (res.data['success'] == true && mounted) {
-        final translated = res.data['data']['mom'];
-        _populateControllers(translated);
+        final translatedData = res.data['data']['mom'];
+        _populateControllers(translatedData);
+
+        // Update local cache
+        if (_mom != null) {
+          _mom!['translations'] ??= {};
+          _mom!['translations'][lang] = translatedData;
+        }
+
         setState(() {
-          _mom = translated;
           _selectedLanguage = lang;
-          _isTranslating = false;
         });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Translated to ${lang.toUpperCase()}'),
+            backgroundColor: AppTheme.primaryColor,
+            duration: const Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isTranslating = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Translation error: ${e.toString()}')),
+          SnackBar(
+            content: Text('Translation failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isTranslating = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Minutes of Meeting (MOM)')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_mom == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Minutes of Meeting (MOM)')),
-        body: const Center(
-          child: Text('No MOM generated yet. Record & process the meeting first.'),
-        ),
-      );
-    }
-
-    final actionItems = (_mom!['actionItems'] as List<dynamic>?) ?? [];
-    final tokenUsage = _mom!['tokenUsage'] as Map<String, dynamic>?;
+    final actionItems = _mom?['actionItems'] as List? ?? [];
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Minutes of Meeting'),
+        title: Text(
+          _meetingTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         actions: [
+          if (!_isLoading)
+            IconButton(
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              tooltip: 'Save Edits',
+              onPressed: _isSaving ? null : _saveChanges,
+            ),
           IconButton(
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                : const Icon(Icons.save),
-            tooltip: 'Save Edits',
-            onPressed: _isSaving ? null : _saveMOMEdits,
-          ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Export PDF / Word',
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'Export & Share PDF/Docx',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -228,104 +288,13 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(15),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isSaving ? null : _saveMOMEdits,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('Save Edits'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ExportDocumentScreen(
-                          meetingId: widget.meetingId,
-                          meetingTitle: _meetingTitle,
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  icon: const Icon(Icons.download),
-                  label: const Text('Export Document'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      body: _isTranslating
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Translating MOM with OpenAI...'),
-                ],
-              ),
-            )
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // OpenAI Token Usage Banner
-                  if (tokenUsage != null && (tokenUsage['totalTokens'] ?? 0) > 0)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0FDF4),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFBBF7D0)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.bolt, color: Color(0xFF16A34A), size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'OpenAI Tokens Used: ${tokenUsage['totalTokens']} (${tokenUsage['promptTokens']} prompt + ${tokenUsage['completionTokens']} output)',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF166534),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
                   // Embedded Meeting Audio Player (Listen & Scrub directly from MOM)
                   if (_audioFileName != null && _audioFileName!.isNotEmpty) ...[
                     AudioPlayerWidget(
@@ -340,17 +309,30 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'MOM Language (Cached after 1st translation):',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        Row(
+                          children: [
+                            const Icon(Icons.translate, size: 18, color: AppTheme.primaryColor),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'MOM Language (Cached instantly):',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         SizedBox(
                           width: double.infinity,
                           child: SegmentedButton<String>(
@@ -370,103 +352,42 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Meeting Summary Card (Editable)
-                  _buildSectionHeader(Icons.summarize_outlined, 'Executive Summary (Editable)'),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: TextField(
-                        controller: _summaryController,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Edit executive summary...',
-                        ),
-                        style: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
-                    ),
+                  // 1. Executive Summary Card (Editable)
+                  _buildSectionHeader(Icons.summarize_outlined, '1. Executive Summary'),
+                  _buildEditableCard(
+                    controller: _summaryController,
+                    hint: 'Detailed executive summary...',
                   ),
                   const SizedBox(height: 20),
 
-                  // Key Discussion Points (Editable)
-                  _buildSectionHeader(Icons.chat_bubble_outline, 'Key Discussion Points (Editable)'),
+                  // 2. Key Discussion Points (Editable)
+                  _buildSectionHeader(Icons.forum_outlined, '2. Key Discussion Points'),
                   if (_discussionControllers.isEmpty)
-                    const Text('No discussion points recorded.')
+                    _buildEmptyBox('No discussion points recorded.')
                   else
-                    Card(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _discussionControllers.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) => ListTile(
-                          leading: CircleAvatar(
-                            radius: 12,
-                            backgroundColor: AppTheme.primaryColor.withAlpha(25),
-                            child: Text('${i + 1}',
-                                style: const TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
-                          ),
-                          title: TextField(
-                            controller: _discussionControllers[i],
-                            maxLines: null,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
-                            onPressed: () {
-                              setState(() {
-                                _discussionControllers.removeAt(i);
-                              });
-                            },
-                          ),
-                        ),
-                      ),
+                    _buildEditableList(
+                      controllers: _discussionControllers,
+                      icon: Icons.chat_bubble_outline,
+                      color: AppTheme.primaryColor,
                     ),
                   const SizedBox(height: 20),
 
-                  // Decisions (Editable)
-                  _buildSectionHeader(Icons.gavel_outlined, 'Decisions Taken (Editable)'),
+                  // 3. Decisions Taken (Editable)
+                  _buildSectionHeader(Icons.gavel_outlined, '3. Decisions Taken'),
                   if (_decisionControllers.isEmpty)
-                    const Text('No decisions recorded.')
+                    _buildEmptyBox('No decisions recorded.')
                   else
-                    Card(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _decisionControllers.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) => ListTile(
-                          leading: const Icon(Icons.check_circle_outline, color: AppTheme.accentColor),
-                          title: TextField(
-                            controller: _decisionControllers[i],
-                            maxLines: null,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
-                            onPressed: () {
-                              setState(() {
-                                _decisionControllers.removeAt(i);
-                              });
-                            },
-                          ),
-                        ),
-                      ),
+                    _buildEditableList(
+                      controllers: _decisionControllers,
+                      icon: Icons.check_circle_outline,
+                      color: const Color(0xFF10B981),
                     ),
                   const SizedBox(height: 20),
 
-                  // Action Items
-                  _buildSectionHeader(Icons.task_alt_outlined, 'Action Items'),
+                  // 4. Action Items & Assignments
+                  _buildSectionHeader(Icons.task_alt_outlined, '4. Action Items & Assignments'),
                   if (actionItems.isEmpty)
-                    const Text('No action items extracted.')
+                    _buildEmptyBox('No action items extracted.')
                   else
                     ListView.builder(
                       shrinkWrap: true,
@@ -474,81 +395,264 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       itemCount: actionItems.length,
                       itemBuilder: (ctx, i) {
                         final item = actionItems[i];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item['task'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold, fontSize: 14),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    if ((item['owner'] ?? '').isNotEmpty)
-                                      Chip(
-                                        avatar: const Icon(Icons.person, size: 14),
-                                        label: Text('Owner: ${item['owner']}',
-                                            style: const TextStyle(fontSize: 11)),
-                                      ),
-                                    if ((item['deadline'] ?? '').isNotEmpty)
-                                      Chip(
-                                        avatar: const Icon(Icons.alarm, size: 14),
-                                        label: Text('Due: ${item['deadline']}',
-                                            style: const TextStyle(fontSize: 11)),
-                                      ),
-                                    Chip(
-                                      backgroundColor: item['priority'] == 'High' ||
-                                              item['priority'] == 'उच्च'
-                                          ? Colors.red.withAlpha(25)
-                                          : Colors.blue.withAlpha(25),
-                                      label: Text(
-                                        'Priority: ${item['priority'] ?? 'Medium'}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: item['priority'] == 'High' ||
-                                                  item['priority'] == 'उच्च'
-                                              ? Colors.red
-                                              : Colors.blue,
-                                        ),
+                        final isHigh = item['priority'] == 'High' || item['priority'] == 'उच्च';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(5),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: isHigh ? const Color(0xFFFEE2E2) : const Color(0xFFE0F2FE),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.assignment_outlined,
+                                      size: 18,
+                                      color: isHigh ? Colors.red : AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      item['task'] ?? '',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: AppTheme.textPrimary,
+                                        height: 1.4,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  if ((item['owner'] ?? '').isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.person, size: 14, color: Color(0xFF475569)),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Owner: ${item['owner']}',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  if ((item['deadline'] ?? '').isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEF3C7),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.alarm, size: 14, color: Color(0xFFB45309)),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Due: ${item['deadline']}',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isHigh ? const Color(0xFFFEE2E2) : const Color(0xFFE0E7FF),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      'Priority: ${item['priority'] ?? 'Medium'}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: isHigh ? const Color(0xFFDC2626) : const Color(0xFF4338CA),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         );
                       },
                     ),
-
-                  // Conclusion (Editable)
                   const SizedBox(height: 20),
-                  _buildSectionHeader(Icons.done_all, 'Conclusion (Editable)'),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: TextField(
-                        controller: _conclusionController,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Edit conclusion / next steps...',
-                        ),
-                        style: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
+
+                  // 5. Next Steps & Follow-ups (Editable)
+                  _buildSectionHeader(Icons.trending_up_outlined, '5. Next Steps & Upcoming To-Dos'),
+                  if (_nextStepsControllers.isEmpty)
+                    _buildEmptyBox('No immediate next steps.')
+                  else
+                    _buildEditableList(
+                      controllers: _nextStepsControllers,
+                      icon: Icons.arrow_forward_rounded,
+                      color: const Color(0xFF6366F1),
                     ),
+                  const SizedBox(height: 20),
+
+                  // 6. Pending Items / Open Questions (Editable)
+                  if (_pendingItemsControllers.isNotEmpty) ...[
+                    _buildSectionHeader(Icons.help_outline_rounded, '6. Pending Items & Open Questions'),
+                    _buildEditableList(
+                      controllers: _pendingItemsControllers,
+                      icon: Icons.question_mark_rounded,
+                      color: const Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // 7. Risks & Blockers (Editable)
+                  if (_risksControllers.isNotEmpty) ...[
+                    _buildSectionHeader(Icons.warning_amber_rounded, '7. Risks & Dependencies'),
+                    _buildEditableList(
+                      controllers: _risksControllers,
+                      icon: Icons.error_outline_rounded,
+                      color: const Color(0xFFEF4444),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // 8. Conclusion (Editable)
+                  _buildSectionHeader(Icons.done_all, '8. Conclusion'),
+                  _buildEditableCard(
+                    controller: _conclusionController,
+                    hint: 'Detailed closing statement...',
                   ),
                   const SizedBox(height: 40),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildEditableCard({
+    required TextEditingController controller,
+    required String hint,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(5),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(14),
+      child: TextField(
+        controller: controller,
+        maxLines: null,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: hint,
+          isDense: true,
+        ),
+        style: const TextStyle(fontSize: 14, height: 1.5, color: AppTheme.textPrimary),
+      ),
+    );
+  }
+
+  Widget _buildEditableList({
+    required List<TextEditingController> controllers,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(5),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: controllers.length,
+        separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        itemBuilder: (ctx, i) => ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          leading: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withAlpha(25),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          title: TextField(
+            controller: controllers[i],
+            maxLines: null,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+            ),
+            style: const TextStyle(fontSize: 14, height: 1.4, color: AppTheme.textPrimary),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+            onPressed: () {
+              setState(() {
+                controllers.removeAt(i);
+              });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyBox(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(text, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
     );
   }
 
@@ -562,7 +666,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary,
             ),
