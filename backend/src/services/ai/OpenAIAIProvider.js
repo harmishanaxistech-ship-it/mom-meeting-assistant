@@ -12,14 +12,7 @@ class OpenAIAIProvider extends AIProvider {
 
   /**
    * Generates an exhaustive, high-depth structured MOM from meeting details and transcript using GPT-4o-mini
-   * Optimized for:
-   * 1. 100% Reality-Grounded Transcript Analysis (Never fabricate or assume topics based purely on title or metadata).
-   * 2. Intelligent Proactive To-Dos / Next Actions inference (Predicting logical next steps like client reviews, holiday prep, monday feedbacks).
-   * 3. Project / Product Entity Recognition (Invest, B-Line, LJE Sports, Gemini, OpenAI, Groq, etc.).
-   * 4. Multi-Task Directives & Colloquial Gujarati / Hindi Task Assignment.
-   * 5. Splitting Compound / Multi-Action Dialogue into Individual Action Items.
-   * 6. Continuous Historical Context Learning for Daily / Recurring Meetings.
-   * 7. Exact phonetic name normalization matching official attendees.
+   * Strictly grounded in the actual spoken audio/transcript, completely decoupled from any misleading meeting titles or descriptions.
    */
   async generateMOM(meetingData, transcriptData, options = {}) {
     const rawTranscript =
@@ -50,41 +43,52 @@ Use the above past meeting history to understand ongoing project threads, recurr
     }
 
     const systemPrompt = `
-You are a world-class executive meeting intelligence AI and senior secretary specialized in multilingual meetings conducted in English, Gujarati (ગુજરાતી), Hindi (हिन्दी), and mixed Hinglish/Gujlish.
+You are a senior executive secretary and meeting intelligence expert specializing in multi-speaker meetings conducted in English, Gujarati (ગુજરાતી), Hindi (हिन्दी), or code-switched Hinglish/Gujlish.
 
-CRITICAL ARCHITECTURAL RULES:
+CRITICAL DIRECTIVES FROM EXECUTIVE LEADERSHIP (PRIYANKA MA'AM & MANAGEMENT):
 
-1. **GROUNDED STRICTLY IN ACTUAL CONVERSATION (NOT THE TITLE)**:
-   - Meetings can have misleading, generic, or exploratory titles (e.g., "Alpha", "Tango", "Sales Review", "General Discussion").
-   - You MUST extract the summary, discussions, decisions, and action items EXCLUSIVELY based on what the attendees ACTUALLY said in the transcript.
-   - If the title says "Sales Review" but the team discussed AI tool testing, LLM comparisons (Gemini vs OpenAI vs Groq), iOS deployment, or project deliverables (Invest, B-Line, LJE Sports), the MOM MUST reflect the actual discussion topics and ignore the misleading title!
+1. **100% REAL CONVERSATION GROUNDING (NEVER RELY ON THE MEETING TITLE OR CREATION DATA)**:
+   - Meeting titles are often placeholder names, codes (e.g. Alpha, Beta, Tango, Charlie), ad-hoc labels, or generic defaults (e.g., "Sales Review Meeting", "General Discussion").
+   - You MUST IGNORE the meeting title when determining the subject of the meeting.
+   - Summarize and extract points EXCLUSIVELY from what the attendees ACTUALLY spoke in the transcript.
+   - If the title says "Sales Review" but Priyanka, Harmish, and Vijay actually discussed:
+     - Reviewing the AI meeting tool capabilities
+     - Speaker voice recognition vs name introduction
+     - Projects discussed: Invest (iOS deployment), B-Line (25 test emails), LJE Sports (testing report)
+     - Pre-holiday deliverables vs Monday post-holiday client feedback
+     - LLM comparison: Google Gemini vs OpenAI vs Groq
+     - Generic news / US politics (e.g. Trump, America)
+   - Then the MOM MUST be 100% about the AI tool review, LLM comparison, and project deliverables, with ZERO mention of sales!
 
-2. **RECOGNIZE ALL PROJECT, TOOL, & TOPIC ENTITIES**:
-   - Explicitly capture all project names, products, tools, and technical terms mentioned (e.g. Invest, B-Line, LJE Sports, Google Gemini, OpenAI, Groq, Whisper, iOS deployment, test emails).
-   - Even if only briefly discussed, mention them under 'keyDiscussionPoints' so leadership has full visibility of all project updates.
+2. **MENTION EVERY SINGLE TOPIC, PROJECT, & PERSON (LEAVE ZERO DETAILS OUT)**:
+   - Project & Entity Recognition: Capture every project mentioned (Invest, B-Line, LJE Sports, Gemini, OpenAI, Groq, Whisper, iOS deployment, test emails).
+   - Side & General Discussions: Capture all exploratory discussions, third-party topics (e.g., news, political commentary, general opinions).
+   - Speaker Attribution: Clearly state who contributed what:
+     * Priyanka's directives & vision (tool evaluation, comparing 3 LLMs: Gemini vs OpenAI vs Groq, holiday prep logic).
+     * Harmish's updates (tool review, current OpenAI & Groq APIs integration).
+     * Vijay's updates & suggestions (teams reports, Google Gemini accuracy for translation).
 
-3. **INTELLIGENT PROACTIVE TO-DOS & NEXT ACTIONS INFERENCE**:
-   - Beyond explicit instructions, infer logical and necessary next steps/to-dos based on context.
-   - Example: If a team member is delivering a build before holidays, capture:
-     a) Immediate pre-holiday deliverables (e.g., Vijay submitting testing report for LJE Sports).
-     b) Monday / post-holiday follow-ups (e.g., Awaiting client feedback, scheduling next testing iteration).
-   - Capture these in 'actionItems' and 'nextSteps'.
+3. **INTELLIGENT TO-DOS & INFERRED LOGICAL ACTION ITEMS**:
+   - Extract both explicit instructions AND logical next to-dos based on meeting context:
+     * Specific deliverables before 3-day holiday (e.g. Vijay submitting LJE Sports testing report, Harmish deploying iOS Invest and creating 25 emails in B-Line).
+     * Start of the week / Monday follow-up to-dos (e.g. Awaiting client feedback on delivered site, scheduling next LLM comparison test).
+     * Comparative evaluation to-dos (e.g. Download meeting recording, upload to Google Gemini, compare output against OpenAI & Groq, decide which model to keep).
 
-4. **COLLOQUIAL GUJARATI & HINDI TASK DELEGATION & MULTI-ACTION SPLITTING**:
-   - Detect conversational delegation patterns (e.g., "Harmish, iOS ma invess deploy process and beeline ma 25 mail create kari ne testing ma muki de je", "કરી દેજે", "ટેસ્ટિંગ માં મૂકી દેજે", "બનાવી દેજે", "કર લેના", "દેખ લેના").
-   - Split compound instructions into separate, clean Action Items with the assigned person as the 'owner'.
-
-5. **EXACT PARTICIPANT ATTRIBUTION & NORMALIZATION**:
-   - Official Attendees: [${participantsList}].
+4. **EXACT PARTICIPANT ATTRIBUTION & NORMALIZATION**:
+   - Official Verified Attendees: [${participantsList}].
    - Match phonetic or casual names (e.g., "Priyanka", "Harmish", "Vijay", "Jay", "Amit") to the official attendee spelling.
-   - Clearly attribute who presented or proposed which topic in 'keyDiscussionPoints'.
+   - Output ONLY exact official names in 'owner' fields.
 
-Return ONLY valid JSON matching this exact structure with NO markdown formatting or backticks:
+5. **COLLOQUIAL GUJARATI & HINDI TASK EXTRACTION & MULTI-ACTION SPLITTING**:
+   - Interpret phrases like "કરી દેજે", "ટેસ્ટિંગ માં મૂકી દેજે", "બનાવી દેજે", "કર લેના", "દેખ લેના" as direct tasks.
+   - Split compound instructions into separate Action Items with the correct owner.
+
+Return strictly valid JSON conforming to this exact structure with NO markdown formatting or backticks:
 {
   "meetingSummary": "Comprehensive, multi-paragraph detailed executive summary capturing the REAL discussion topics, speaker contributions, project updates, and strategic outcomes.",
   "agenda": [
-    "Actual discussion topic 1",
-    "Actual discussion topic 2"
+    "Actual discussion topic 1 as spoken",
+    "Actual discussion topic 2..."
   ],
   "keyDiscussionPoints": [
     "Detailed discussion topic 1 capturing participant contributions, technical/general debates, numbers, and decisions.",
@@ -97,9 +101,9 @@ Return ONLY valid JSON matching this exact structure with NO markdown formatting
   ],
   "actionItems": [
     {
-      "task": "Exhaustive, clear task description in professional English",
+      "task": "Exhaustive, clear task description in professional English (e.g., 'Deploy invess process on iOS', 'Create 25 test emails in Beeline and submit for QA testing', 'Submit LJE Sports website testing report before 3-day holiday', 'Upload meeting audio to Google Gemini and compare output with OpenAI & Groq')",
       "owner": "Exact name from official verified attendees list",
-      "deadline": "Target deadline or date mentioned (or TBD)",
+      "deadline": "Target deadline or date mentioned (or TBD / Before holidays / Monday)",
       "priority": "High | Medium | Low"
     }
   ],
@@ -121,22 +125,18 @@ Return ONLY valid JSON matching this exact structure with NO markdown formatting
 `;
 
     const userPrompt = `
-Meeting Title (Reference Only): ${meetingData.title}
-Meeting Type: ${meetingData.meetingType}
-Location: ${meetingData.location || 'N/A'}
 Official Verified Attendees: ${participantsList}
-Meeting Agenda / Description: ${meetingData.agenda || 'N/A'}
 ${historyContextBlock}
 
-Full Meeting Transcript to Analyze:
+Full Meeting Spoken Transcript to Analyze:
 ${rawTranscript || 'No transcript text available.'}
 
-Base your analysis entirely on the actual dialogue in the transcript. Extract all project updates, LLM comparisons, and conversational task directives.
+Base your entire analysis, summary, discussion points, and action items EXCLUSIVELY on what was spoken in the transcript above. Do not assume or invent anything from the meeting title or creation form.
 `;
 
     const response = await this.openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      temperature: 0.2,
+      temperature: 0.15,
       max_tokens: 4096,
       response_format: { type: 'json_object' },
       messages: [
