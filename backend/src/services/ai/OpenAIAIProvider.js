@@ -13,12 +13,13 @@ class OpenAIAIProvider extends AIProvider {
   /**
    * Generates an exhaustive, high-depth structured MOM from meeting details and transcript using GPT-4o-mini
    * Optimized for:
-   * 1. Multi-Task Directives & Colloquial Gujarati / Hindi Task Assignment (e.g., "Harmish, iOS ma invess deploy process and beeline ma 25 mail create kari ne testing ma muki de je").
-   * 2. Splitting Compound / Multi-Action Dialogue into Individual Action Items.
-   * 3. Continuous Historical Context Learning for Daily / Recurring Meetings.
-   * 4. Multi-Directional Peer-to-Peer & Manager Task Delegation.
-   * 5. General Team Discussions, Brainstorming & Open Debates captured thoroughly.
-   * 6. Exact phonetic name normalization (e.g., "Jai" -> "Jay", "Harmish" -> "Harmish", "Vijay" -> "Vijay") matching official attendees.
+   * 1. 100% Reality-Grounded Transcript Analysis (Never fabricate or assume topics based purely on title or metadata).
+   * 2. Intelligent Proactive To-Dos / Next Actions inference (Predicting logical next steps like client reviews, holiday prep, monday feedbacks).
+   * 3. Project / Product Entity Recognition (Invest, B-Line, LJE Sports, Gemini, OpenAI, Groq, etc.).
+   * 4. Multi-Task Directives & Colloquial Gujarati / Hindi Task Assignment.
+   * 5. Splitting Compound / Multi-Action Dialogue into Individual Action Items.
+   * 6. Continuous Historical Context Learning for Daily / Recurring Meetings.
+   * 7. Exact phonetic name normalization matching official attendees.
    */
   async generateMOM(meetingData, transcriptData, options = {}) {
     const rawTranscript =
@@ -49,43 +50,41 @@ Use the above past meeting history to understand ongoing project threads, recurr
     }
 
     const systemPrompt = `
-You are a senior executive secretary and intelligent meeting analyst specialized in multi-speaker daily technical meetings conducted in English, Gujarati (ગુજરાતી), Hindi (हिन्दी), or code-switched Hinglish/Gujlish.
+You are a world-class executive meeting intelligence AI and senior secretary specialized in multilingual meetings conducted in English, Gujarati (ગુજરાતી), Hindi (हिन्दी), and mixed Hinglish/Gujlish.
 
-CRITICAL INSTRUCTIONS FOR COLLOQUIAL GUJARATI/HINDI TASK DELEGATION & MULTI-ACTION DIRECTIVES:
+CRITICAL ARCHITECTURAL RULES:
 
-1. **COLLOQUIAL GUJARATI & HINDI TASK ASSIGNMENT DETECTION**:
-   - In Indian software team meetings, tasks are often given conversationally at the end or middle of discussions.
-   - Example 1 (Gujarati): "Vijay says to Harmish: 'Harmish, iOS ma invess deploy process and beeline ma 25 mail create kari ne testing ma muki de je'".
-     -> YOU MUST EXTRACT BOTH TASKS FOR HARMISH:
-        Task A: "Deploy invess process on iOS" (Owner: Harmish)
-        Task B: "Create 25 test emails in Beeline and put for QA testing" (Owner: Harmish)
-   - Example 2 (Gujarati): "આ કામ પતી જાય એટલે તું સર્વર પર અપડેટ મૂકી દેજે" -> Identify who was addressed and create the task.
-   - Example 3 (Hindi): "यह टास्क होने के बाद एपीआई टेस्ट करके डिप्लॉय कर देना" -> Extract the deployment & testing task.
-   - ANY statement where Person A tells Person B to do something ("કરી દેજે", "કરી નાખજે", "જોઈ લેજે", "ટેસ્ટિંગ માં મૂકી દેજે", "બનાવી દેજે", "કર લેના", "દેખ લેના", "ડિપ્લોય કરના") MUST be extracted as an explicit Action Item with Person B as the owner!
+1. **GROUNDED STRICTLY IN ACTUAL CONVERSATION (NOT THE TITLE)**:
+   - Meetings can have misleading, generic, or exploratory titles (e.g., "Alpha", "Tango", "Sales Review", "General Discussion").
+   - You MUST extract the summary, discussions, decisions, and action items EXCLUSIVELY based on what the attendees ACTUALLY said in the transcript.
+   - If the title says "Sales Review" but the team discussed AI tool testing, LLM comparisons (Gemini vs OpenAI vs Groq), iOS deployment, or project deliverables (Invest, B-Line, LJE Sports), the MOM MUST reflect the actual discussion topics and ignore the misleading title!
 
-2. **SPLIT COMPOUND / MULTI-TASK STATEMENTS**:
-   - When a speaker gives multiple instructions in a single sentence (e.g. "Do X, and also create Y, and deploy Z"), do NOT lump them into one vague item. Split them into clean, individual, actionable tasks assigned to that person.
+2. **RECOGNIZE ALL PROJECT, TOOL, & TOPIC ENTITIES**:
+   - Explicitly capture all project names, products, tools, and technical terms mentioned (e.g. Invest, B-Line, LJE Sports, Google Gemini, OpenAI, Groq, Whisper, iOS deployment, test emails).
+   - Even if only briefly discussed, mention them under 'keyDiscussionPoints' so leadership has full visibility of all project updates.
 
-3. **GENERAL DISCUSSION & CONVERSATION DETAIL**:
-   - Every project discussion, technical challenge, progress update, or side conversation that happens before, during, or after tasks are given MUST be documented under 'keyDiscussionPoints'.
-   - State clearly which team member discussed what topic.
+3. **INTELLIGENT PROACTIVE TO-DOS & NEXT ACTIONS INFERENCE**:
+   - Beyond explicit instructions, infer logical and necessary next steps/to-dos based on context.
+   - Example: If a team member is delivering a build before holidays, capture:
+     a) Immediate pre-holiday deliverables (e.g., Vijay submitting testing report for LJE Sports).
+     b) Monday / post-holiday follow-ups (e.g., Awaiting client feedback, scheduling next testing iteration).
+   - Capture these in 'actionItems' and 'nextSteps'.
 
-4. **EXACT PARTICIPANT NAME MATCHING & NORMALIZATION**:
-   - The ONLY official, verified attendees of this meeting are: [${participantsList}].
-   - If someone in the transcript speaks a name phonetically (e.g. "Jai" vs "Jay", "Raj" vs "Rajesh", "Priya" vs "Preeya", "Harsh" vs "Hrush", "Amit" vs "Ameet", "Vijay" vs "Vijay", "Harmish" vs "Harmish"), you MUST match and normalize it to the EXACT SPELLING in the verified attendees list: [${participantsList}].
-   - Output ONLY the exact names from [${participantsList}]. NEVER output misspelled phonetic variations!
+4. **COLLOQUIAL GUJARATI & HINDI TASK DELEGATION & MULTI-ACTION SPLITTING**:
+   - Detect conversational delegation patterns (e.g., "Harmish, iOS ma invess deploy process and beeline ma 25 mail create kari ne testing ma muki de je", "કરી દેજે", "ટેસ્ટિંગ માં મૂકી દેજે", "બનાવી દેજે", "કર લેના", "દેખ લેના").
+   - Split compound instructions into separate, clean Action Items with the assigned person as the 'owner'.
 
-5. **EXHAUSTIVE DETAILS & ZERO MISSED POINTS**:
-   - Provide a comprehensive multi-paragraph Executive Summary covering background, attendee updates, all technical tasks, and meeting conclusions.
-   - Detail every single discussion under keyDiscussionPoints with attendee names and technical metrics.
-   - Capture all decisions, action items (with owner and deadline), pending blockers, risks, and next steps.
+5. **EXACT PARTICIPANT ATTRIBUTION & NORMALIZATION**:
+   - Official Attendees: [${participantsList}].
+   - Match phonetic or casual names (e.g., "Priyanka", "Harmish", "Vijay", "Jay", "Amit") to the official attendee spelling.
+   - Clearly attribute who presented or proposed which topic in 'keyDiscussionPoints'.
 
 Return ONLY valid JSON matching this exact structure with NO markdown formatting or backticks:
 {
-  "meetingSummary": "Comprehensive, multi-paragraph detailed executive summary covering all attendee updates, general discussions, colloquial task assignments, and meeting conclusions.",
+  "meetingSummary": "Comprehensive, multi-paragraph detailed executive summary capturing the REAL discussion topics, speaker contributions, project updates, and strategic outcomes.",
   "agenda": [
-    "Agenda item 1",
-    "Agenda item 2"
+    "Actual discussion topic 1",
+    "Actual discussion topic 2"
   ],
   "keyDiscussionPoints": [
     "Detailed discussion topic 1 capturing participant contributions, technical/general debates, numbers, and decisions.",
@@ -98,7 +97,7 @@ Return ONLY valid JSON matching this exact structure with NO markdown formatting
   ],
   "actionItems": [
     {
-      "task": "Exhaustive, clear task description in professional English (e.g., 'Deploy invess process on iOS', 'Create 25 test emails in Beeline and submit for QA testing')",
+      "task": "Exhaustive, clear task description in professional English",
       "owner": "Exact name from official verified attendees list",
       "deadline": "Target deadline or date mentioned (or TBD)",
       "priority": "High | Medium | Low"
@@ -111,7 +110,7 @@ Return ONLY valid JSON matching this exact structure with NO markdown formatting
     "Identified risk, blocker, timeline delay, or dependency"
   ],
   "nextSteps": [
-    "Immediate operational next step"
+    "Immediate operational next step / upcoming to-do (e.g. Monday client feedback, model accuracy comparison)"
   ],
   "nextMeeting": {
     "date": "YYYY-MM-DD or empty string",
@@ -122,7 +121,7 @@ Return ONLY valid JSON matching this exact structure with NO markdown formatting
 `;
 
     const userPrompt = `
-Meeting Title: ${meetingData.title}
+Meeting Title (Reference Only): ${meetingData.title}
 Meeting Type: ${meetingData.meetingType}
 Location: ${meetingData.location || 'N/A'}
 Official Verified Attendees: ${participantsList}
@@ -132,7 +131,7 @@ ${historyContextBlock}
 Full Meeting Transcript to Analyze:
 ${rawTranscript || 'No transcript text available.'}
 
-Extract all discussions and every single assigned task (including all conversational Gujarati/Hindi task instructions like "કરી દેજે", "ટેસ્ટિંગ માં મૂકી દેજે", etc.).
+Base your analysis entirely on the actual dialogue in the transcript. Extract all project updates, LLM comparisons, and conversational task directives.
 `;
 
     const response = await this.openai.chat.completions.create({
@@ -157,7 +156,7 @@ Extract all discussions and every single assigned task (including all conversati
       const clean = name.trim().toLowerCase();
       for (const official of officialNames) {
         if (official.toLowerCase() === clean) return official;
-        // Phonetic / fuzzy match (e.g. "jai" -> "Jay", "harmish" -> "Harmish")
+        // Phonetic / fuzzy match (e.g. "jai" -> "Jay", "harmish" -> "Harmish", "priyanka" -> "Priyanka")
         if (
           clean.includes(official.toLowerCase()) ||
           official.toLowerCase().includes(clean) ||
