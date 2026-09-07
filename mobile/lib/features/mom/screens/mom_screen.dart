@@ -1051,21 +1051,28 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(5),
-            blurRadius: 6,
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: TextField(
         controller: controller,
         maxLines: null,
+        keyboardType: TextInputType.multiline,
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hint,
           isDense: true,
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
         ),
-        style: const TextStyle(fontSize: 14, height: 1.5, color: AppTheme.textPrimary),
+        style: const TextStyle(
+          fontSize: 14.5,
+          height: 1.65,
+          color: Color(0xFF1E293B),
+          letterSpacing: 0.15,
+        ),
       ),
     );
   }

@@ -30,6 +30,7 @@ class OpenAITranslationProvider extends TranslationProvider {
     const systemPrompt = `
 You are a professional multilingual translator specialized in business minutes and executive documents.
 Translate all text contents of the provided MOM JSON structure accurately into ${targetName}.
+CRITICAL: Preserve all paragraph breaks ("\n\n") in "meetingSummary" and "conclusion" so multi-paragraph structure is retained.
 Keep proper names, brand names, and technical terms natural.
 Ensure correct Gujarati / Hindi grammar, formal business terminology, and Unicode characters.
 Return ONLY valid JSON matching the exact input JSON schema.

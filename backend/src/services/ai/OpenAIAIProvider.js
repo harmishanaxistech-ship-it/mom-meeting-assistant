@@ -76,14 +76,18 @@ Beyond explicit "do this" statements, infer obvious to-dos:
 RULE 6 — DO NOT FABRICATE OR ASSUME:
 Only output what is supported by the transcript. If something was NOT discussed, do not include it.
 
-RULE 7 — PROFESSIONAL OUTPUT QUALITY:
-Write in clear, professional business English. Transform informal/colloquial speech (Hinglish, Gujlish) into formal professional language while preserving the meaning exactly.
+RULE 7 — PROFESSIONAL OUTPUT QUALITY & EXECUTIVE SUMMARY PARAGRAPHING:
+- Write in clear, professional business English. Transform informal/colloquial speech into formal executive language while preserving facts exactly.
+- EXECUTIVE SUMMARY FORMAT REQUIREMENT: The "meetingSummary" MUST be structured into 2 to 4 distinct, readable paragraphs separated by double newlines ("\n\n"). NEVER return a single solid wall of text.
+  * Paragraph 1 (Overview & Purpose): Purpose of the meeting, lead participants, and core focus area.
+  * Paragraph 2 (Key Discussions & Operational Updates): In-depth breakdown of status reports, system updates, workflows, and specifics discussed.
+  * Paragraph 3 (Strategic Decisions & Agreements): Key conclusions, approvals, team commitments, and agreed deliverables.
 
 Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
 
 JSON structure:
 {
-  "meetingSummary": "Multi-paragraph executive summary of what was ACTUALLY discussed. Be thorough and specific — mention every project, person, decision, and update covered.",
+  "meetingSummary": "Paragraph 1: Executive overview of the meeting and purpose.\n\nParagraph 2: Key operational discussions, project updates, and topics covered.\n\nParagraph 3: Agreed decisions, resolutions, and forward-looking expectations.",
   "agenda": ["Actual topic 1 from transcript", "Actual topic 2..."],
   "keyDiscussionPoints": [
     "Detailed point 1: Who discussed what, what was the outcome or status update",
