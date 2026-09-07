@@ -42,7 +42,8 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
 
     const dir = path.dirname(audioFilePath);
     const baseName = path.basename(audioFilePath, path.extname(audioFilePath));
-    const chunkPattern = path.join(dir, `${baseName}_chunk_%03d.m4a`);
+    const ext = path.extname(audioFilePath); // Keep same extension as input (mp3/m4a/wav)
+    const chunkPattern = path.join(dir, `${baseName}_chunk_%03d${ext}`);
 
     console.log(
       `[STT] Audio: ${(duration / 60).toFixed(1)} min (${sizeMB.toFixed(1)} MB) - chunking into 5-min pieces...`
@@ -52,7 +53,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
       // Remove old chunk files first
       const existing = fs
         .readdirSync(dir)
-        .filter((f) => f.startsWith(`${baseName}_chunk_`) && f.endsWith('.m4a'));
+        .filter((f) => f.startsWith(`${baseName}_chunk_`));
       for (const f of existing) fs.unlinkSync(path.join(dir, f));
 
       execSync(
@@ -62,7 +63,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
 
       const chunks = fs
         .readdirSync(dir)
-        .filter((f) => f.startsWith(`${baseName}_chunk_`) && f.endsWith('.m4a'))
+        .filter((f) => f.startsWith(`${baseName}_chunk_`))
         .sort()
         .map((f) => path.join(dir, f));
 
@@ -120,9 +121,11 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         ? options.participants.join(', ')
         : 'Priyanka, Harmish, Vijay, Jay';
 
-    // Build a context-rich prompt for Whisper to improve recognition accuracy
-    // Whisper uses this as prior context, dramatically improving name & term recognition
-    const whisperPrompt = `Indian business meeting. Participants: ${participantsList}. Software development team discussing projects, tasks, testing, deployments, and sprint updates. Spoken in a mix of English, Gujarati, and Hindi.`;
+    // IMPORTANT: Whisper prompt must NOT end with a complete sentence.
+    // If it ends with a complete sentence (e.g., "Spoken in a mix of English, Gujarati, and Hindi.")
+    // Whisper will hallucinate by echoing that sentence back when audio is unclear.
+    // Always end the prompt mid-phrase or with a comma-terminated list of keywords.
+    const whisperPrompt = `Indian business meeting. Participants: ${participantsList}. Topics: software projects, deployment, testing, sprint, client, tasks,`;
 
     for (let i = 0; i < filesToProcess.length; i++) {
       const filePath = filesToProcess[i];
@@ -131,16 +134,31 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         `[STT] Part ${i + 1}/${filesToProcess.length}: ${path.basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
       );
 
-      const fileStream = fs.createReadStream(filePath);
-
-      // Use translations.create → converts Gujarati/Hindi/mixed speech directly to English
-      // This avoids the "language not supported" error for 'gu' in transcriptions.create
-      const response = await this.openai.audio.translations.create({
-        file: fileStream,
-        model: 'whisper-1',
-        response_format: 'verbose_json',
-        prompt: whisperPrompt.substring(0, 800),
-      });
+      let response;
+      try {
+        // PRIMARY: Use transcriptions.create without language lock for best multilingual accuracy
+        // Whisper auto-detects language and handles Gujarati/Hindi/English code-switching
+        const fileStream = fs.createReadStream(filePath);
+        response = await this.openai.audio.transcriptions.create({
+          file: fileStream,
+          model: 'whisper-1',
+          response_format: 'verbose_json',
+          prompt: whisperPrompt.substring(0, 800),
+          // No 'language' field — let Whisper auto-detect for best accuracy on mixed language audio
+        });
+        console.log(`[STT] Transcription successful (auto-detect language)`);
+      } catch (transcribeErr) {
+        console.warn(`[STT] Transcription failed (${transcribeErr.message}), trying translation fallback...`);
+        // FALLBACK: Use translations.create to force English output if transcription fails
+        const fileStream2 = fs.createReadStream(filePath);
+        response = await this.openai.audio.translations.create({
+          file: fileStream2,
+          model: 'whisper-1',
+          response_format: 'verbose_json',
+          prompt: whisperPrompt.substring(0, 800),
+        });
+        console.log(`[STT] Translation fallback successful`);
+      }
 
       let chunkText = (response.text || '').trim();
 
