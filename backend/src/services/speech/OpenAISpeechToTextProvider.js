@@ -121,22 +121,18 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         ? options.participants.join(', ')
         : 'Priyanka, Harmish, Vijay, Jay';
 
-    // IMPORTANT: Whisper prompt must NOT end with a complete sentence.
-    // Whisper uses prompt tokens to prime its vocabulary, phonetics, and domain context.
-    // Build dynamically from the meeting's title, agenda, and participants to support any meeting topic.
-    const meetingContextParts = [];
-    if (options.title && options.title.trim().length > 0) {
-      meetingContextParts.push(`Meeting: ${options.title.trim()}`);
+    // IMPORTANT: Whisper prompt must NOT contain long descriptive sentences.
+    // In Whisper, descriptive sentences in the prompt cause the decoder to hallucinate or echo words,
+    // or silence actual short utterances. Only provide comma-separated participant names and short domain terms.
+    let whisperPrompt = '';
+    if (Array.isArray(options.participants) && options.participants.length > 0) {
+      whisperPrompt = options.participants.join(', ');
+    } else if (participantsList && participantsList.trim().length > 0) {
+      whisperPrompt = participantsList;
     }
-    if (Array.isArray(options.agenda) && options.agenda.length > 0) {
-      meetingContextParts.push(`Agenda: ${options.agenda.slice(0, 5).join(', ')}`);
-    }
-    const dynamicContext = meetingContextParts.length > 0 ? meetingContextParts.join('. ') + '. ' : '';
-
-    const whisperPrompt = `${dynamicContext}Multilingual business discussion, English, Hindi, regional Indian languages. Participants: ${participantsList}. Topics: project updates, schedules, deliverables, operational reviews, action items, dates, metrics, software, tools,`;
 
     // 1. Try Groq Whisper-Large-V3 first if Groq API Key is available
-    // Groq whisper-large-v3 translations converts Gujarati/Hindi speech directly to rich English transcript
+    // Groq whisper-large-v3 translations converts Gujarati/Hindi/multilingual speech directly to English
     if (env.groqApiKey) {
       try {
         console.log(`[STT] Running primary STT via Groq whisper-large-v3 translations for maximum multilingual fidelity...`);
@@ -148,24 +144,22 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         for (let i = 0; i < filesToProcess.length; i++) {
           const filePath = filesToProcess[i];
           let gRes;
+          const optionsPayload = {
+            file: fs.createReadStream(filePath),
+            model: 'whisper-large-v3',
+            response_format: 'verbose_json',
+            temperature: 0,
+          };
+          if (whisperPrompt) {
+            optionsPayload.prompt = whisperPrompt;
+          }
+
           try {
             // First attempt: translations.create to directly produce full English transcript
-            gRes = await groqClient.audio.translations.create({
-              file: fs.createReadStream(filePath),
-              model: 'whisper-large-v3',
-              response_format: 'verbose_json',
-              temperature: 0,
-              prompt: whisperPrompt,
-            });
+            gRes = await groqClient.audio.translations.create(optionsPayload);
           } catch (tErr) {
             // Fallback: transcriptions.create
-            gRes = await groqClient.audio.transcriptions.create({
-              file: fs.createReadStream(filePath),
-              model: 'whisper-large-v3',
-              response_format: 'verbose_json',
-              temperature: 0,
-              prompt: whisperPrompt,
-            });
+            gRes = await groqClient.audio.transcriptions.create(optionsPayload);
           }
 
           if (gRes && gRes.text) {
@@ -184,7 +178,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
           groqOffset += (gRes?.duration || 0);
         }
 
-        if (groqRawText.trim().length > 100) {
+        if (groqRawText.trim().length > 20) {
           console.log(`[STT] Groq whisper-large-v3 captured ${groqRawText.length} chars of high-fidelity transcript!`);
           return {
             rawText: this.deduplicateTranscript(groqRawText),
