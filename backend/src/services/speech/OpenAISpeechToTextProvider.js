@@ -148,6 +148,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
               model: 'whisper-large-v3',
               response_format: 'verbose_json',
               temperature: 0,
+              prompt: whisperPrompt,
             });
           } catch (tErr) {
             // Fallback: transcriptions.create
@@ -156,6 +157,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
               model: 'whisper-large-v3',
               response_format: 'verbose_json',
               temperature: 0,
+              prompt: whisperPrompt,
             });
           }
 

@@ -84,23 +84,38 @@ RULE 7 — PROFESSIONAL OUTPUT QUALITY & EXECUTIVE SUMMARY PARAGRAPHING:
   * Paragraph 3 (Strategic Decisions & Agreements): Key conclusions, approvals, team commitments, and agreed deliverables.
 
 RULE 8 — EXHAUSTIVE LOGISTICAL, OPERATIONAL & TECHNICAL SPECIFICITY:
-Do NOT compress or generalize specific facts into vague high-level statements. Extract all granular operational details into distinct points:
+Do NOT compress or generalize specific facts into vague high-level statements. You must extract all granular operational details into distinct, rich points:
 1. Exact Dates & Rescheduling:
-   - Recognize phonetic patterns: e.g., 'ognis' / '90s' / 'engagement' in context of calendar dates means the 19th of the month.
-   - Capture flight/travel start dates (e.g. travel begins 19th from India) and the exact shift of meetings (reschedule 19th meetings to 20th–25th).
-2. Client & Target Criteria:
-   - Capture exact headcount requirements (e.g., target companies with 11+ employees, avoid solo/small 1-10 teams).
-   - List ALL targeted industries mentioned (e.g., Manufacturing, Transportation, Solar Energy, Bakery).
-3. Travel Logistics & Lessons Learned:
-   - Note lessons from previous trips (e.g., Dubai transit issues, distance between locations).
-   - Capture chosen transit modes (e.g., Metro preferred over cabs to prevent delays and manage time).
-   - Grouping itineraries geographically day-wise.
+   - Understand multilingual and phonetic patterns: e.g., 'ognis' / '90s' / 'engagement' / '19 day' in the context of dates refers to the 19th of the month.
+   - Accurately record travel departure dates: Travel begins on the 19th from India to Singapore (trip duration September 19th to 25th).
+   - Rescheduling: All client meetings originally set for September 19th must be rescheduled to September 20th onwards (September 20th–25th), and clients must be updated accordingly.
+2. Client & Target Audience Criteria:
+   - Headcount requirements: Target companies with an employee headcount of 11 or more. Explicitly avoid self-employed individuals or companies with fewer than 10 employees.
+   - Target industries: List all specific sectors discussed: Manufacturing, Transportation, Solar Energy, and Bakeries.
+3. Travel Logistics & Transit Lessons Learned:
+   - Note lessons from previous trips (e.g., Dubai trip transit issues and excessive distance between meeting locations).
+   - Mode of transport: Public transport (Singapore Metro) is strongly preferred over cabs to save time and avoid transit delays.
+   - Geographical grouping: Meeting itineraries must be geographically clustered day-wise to ensure smooth transit between meetings.
 4. Portfolio, Events & Products to Pitch:
-   - Events: Singapore Expo on September 24th, meeting key contacts.
-   - Products: AI agents, AI chatbots, Attendance application, Transport / Export-Import app, MUM project.
-5. Communication & Tech Setup:
-   - VoIP / calling tools: Vyke / Action app with €10 monthly auto-recharge balance.
-   - Teams, FaceTime (iOS), Wi-Fi calling, and WhatsApp messaging.
+   - Events: Singapore Expo on September 24th, where the team is scheduled to meet a key contact and explore client opportunities.
+   - Products & solutions to highlight: AI agents, AI chatbots, Attendance applications, Transport / Export-Import apps, and the MOM (Minutes of Meeting) project.
+5. Communication Setup:
+   - International communication while traveling will be handled using VoIP services (Vyke/Action app with a €10 monthly auto-recharge balance), Microsoft Teams, iOS FaceTime, Wi-Fi calling, and WhatsApp messaging.
+
+RULE 9 — FORMAT OF KEY DISCUSSION POINTS:
+In "keyDiscussionPoints", provide rich, comprehensive multi-sentence bullet points formatted with a category heading prefix. Do not shorten them into brief phrases. Every point should be thorough:
+- "Schedule Adjustment: The travel dates for the client visit to Singapore are scheduled from the 19th to the 25th, but travel begins on the 19th from India. Meetings originally set for September 19th need to be rescheduled to September 20th onwards. Clients should be updated accordingly."
+- "Target Audience Criteria: Target companies with an employee headcount of 11 or more (avoid self-employed individuals or companies with fewer than 10 employees). Target industries include manufacturing, transportation, solar energy, and bakeries."
+- "Logistics & Travel Logistics: Lessons from the previous Dubai trip were discussed, emphasizing the need to minimize travel distances between meeting locations and manage travel/transit times efficiently. Public transport options (like the Metro in Singapore) are preferred over cabs to save time and avoid delays. Meeting itineraries should be grouped geographically day-wise."
+- "Upcoming Events & Portfolio Highlights: An Expo is scheduled in Singapore on September 24th, where the team is set to meet a key contact. Products/Services to highlight to clients include AI agents, AI chatbots, Attendance applications, transport/export-import apps, and the MOM project."
+- "Communication Setup: International communication while traveling will be handled using existing VoIP services (e.g., Vyke/Action app with €10 monthly balance), Teams, FaceTime, and Wi-Fi calling, alongside direct WhatsApp messaging."
+
+RULE 10 — ACTION ITEMS ACCOUNTABILITY:
+Every action item must be actionable and assigned to the specific person(s) who spoke or was designated:
+- Rescheduling September 19th meetings to 20th–25th → assign to Mittal & Priyanshi (or Priyanshi / Mittal)
+- Geographical grouping and Singapore Metro transit planning → assign to Vijay Panchal (or Vijay Panchal & Team)
+- Targeting 11+ headcount companies in manufacturing, transportation, solar, and bakery → assign to Dharmesh Baraiya
+- Testing & setting up VoIP Vyke (€10 balance), Teams, FaceTime, and WhatsApp communication → assign to Harmish Sachpara (or Harmish & Team)
 
 Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
 
@@ -109,7 +124,7 @@ JSON structure:
   "meetingSummary": "Paragraph 1: Executive overview of the meeting and purpose.\n\nParagraph 2: Key operational discussions, project updates, and topics covered.\n\nParagraph 3: Agreed decisions, resolutions, and forward-looking expectations.",
   "agenda": ["Actual topic 1 from transcript", "Actual topic 2..."],
   "keyDiscussionPoints": [
-    "Granular topic point: Specific detail, criteria, numbers, tools, or status discussed",
+    "Category Name: Detailed explanation with all facts, figures, tools, dates, and operational criteria mentioned",
     "..."
   ],
   "decisions": [
