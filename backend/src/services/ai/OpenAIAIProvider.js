@@ -141,7 +141,12 @@ IMPORTANT: Base your MOM exclusively on the transcript above. Do not use the mee
     const usage = response.usage || {};
 
     // Normalize owner names against official participant list
-    const officialNames = Array.isArray(meetingData.participants) ? meetingData.participants : [];
+    // Also apply title-case to fix any inconsistently cased names in the participants list
+    const toTitleCase = (str) =>
+      str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+    const officialNames = Array.isArray(meetingData.participants)
+      ? meetingData.participants.map((n) => toTitleCase(n))
+      : [];
     const normalizeName = (name) => {
       if (!name || name.trim().length === 0) return 'Team';
       const clean = name.trim().toLowerCase();

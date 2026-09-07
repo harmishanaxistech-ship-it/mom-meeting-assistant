@@ -20,13 +20,18 @@ const createMeeting = async (req, res, next) => {
       });
     }
 
+    const toTitleCase = (str) =>
+      str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+
     const meeting = await Meeting.create({
       userId: req.user._id,
       title: title.trim(),
       meetingType: meetingType || 'General Meeting',
       dateTime: dateTime ? new Date(dateTime) : new Date(),
       location: location ? location.trim() : '',
-      participants: Array.isArray(participants) ? participants : [],
+      participants: Array.isArray(participants)
+        ? participants.map((p) => toTitleCase(p.trim())).filter(Boolean)
+        : [],
       agenda: agenda ? agenda.trim() : '',
       status: 'created',
     });
