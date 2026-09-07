@@ -128,9 +128,14 @@ const uploadAudio = async (req, res, next) => {
 };
 
 /**
- * @desc    Process meeting audio: STT -> AI MOM
+ * @desc    Process meeting audio: STT -> AI MOM (ASYNC - returns 202 immediately)
  * @route   POST /api/meetings/:id/process
  * @access  Private
+ *
+ * WHY ASYNC: OpenAI Whisper STT + GPT-4o can take 3-5 minutes for a 7-minute audio.
+ * Cloudflare Quick Tunnels timeout at 100 seconds → HTTP 524 error.
+ * Fix: Respond 202 immediately, run heavy processing in background.
+ * Flutter polls /processing-status every 3s and navigates when status = completed.
  */
 const processMeeting = async (req, res, next) => {
   try {
@@ -146,139 +151,150 @@ const processMeeting = async (req, res, next) => {
       });
     }
 
+    // Prevent double-processing
+    if (meeting.status === 'transcribing' || meeting.status === 'analyzing') {
+      return res.status(409).json({
+        success: false,
+        error: 'Meeting is already being processed',
+      });
+    }
+
+    // Create or reset ProcessingJob
     let job = await ProcessingJob.findOne({ meetingId: meeting._id });
     if (!job) {
       job = await ProcessingJob.create({
         meetingId: meeting._id,
         currentStage: 'transcription',
-        progressPercent: 25,
+        progressPercent: 10,
       });
+    } else {
+      job.currentStage = 'transcription';
+      job.progressPercent = 10;
+      job.error = undefined;
+      await job.save();
     }
 
-    // 1. Stage 1: STT Transcription (25% -> 40%)
     meeting.status = 'transcribing';
     await meeting.save();
 
-    job.currentStage = 'transcription';
-    job.progressPercent = 35;
-    await job.save();
-
-    const sttProvider = getSTTProvider();
-    const audioPath = meeting.audioFile?.path;
-
-    let transcriptResult;
-    if (audioPath && fs.existsSync(audioPath)) {
-      transcriptResult = await sttProvider.transcribe(audioPath, {
-        title: meeting.title,
-        agenda: meeting.agenda,
-        participants: meeting.participants || [],
-      });
-    } else {
-      transcriptResult = {
-        rawText: `Discussion on ${meeting.title}. Participants: ${(meeting.participants || []).join(', ')}. Agenda: ${meeting.agenda || 'General topics'}. Agreed on next steps and sprint deliverables.`,
-        segments: [
-          {
-            speaker: 'Speaker 1',
-            startTime: 0,
-            endTime: 30,
-            text: `Discussion on ${meeting.title}.`,
-          },
-        ],
-      };
-    }
-
-    // Save Transcript to DB
-    const transcript = await Transcript.findOneAndUpdate(
-      { meetingId: meeting._id },
-      {
-        meetingId: meeting._id,
-        rawText: transcriptResult.rawText,
-        segments: transcriptResult.segments,
-        provider: env.providers.stt,
-      },
-      { upsert: true, returnDocument: 'after' }
-    );
-
-    // 2. Stage 2: Speaker Diarization / Structuring (65%)
-    job.stages.speechRecognition = { completed: true, completedAt: new Date() };
-    job.stages.speakerIdentification = { completed: true, completedAt: new Date() };
-    job.currentStage = 'ai_analysis';
-    job.progressPercent = 65;
-    await job.save();
-
-    // 3. Stage 3: AI MOM Generation (75% -> 90%)
-    meeting.status = 'analyzing';
-    await meeting.save();
-
-    // Fetch previous meeting history for continuous learning & speaker profiling
-    const pastMeetings = await Meeting.find({
-      userId: req.user._id,
-      status: 'completed',
-      _id: { $ne: meeting._id },
-    })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .select('_id title dateTime participants');
-
-    let pastContext = [];
-    for (const pm of pastMeetings) {
-      const pastMom = await MOM.findOne({ meetingId: pm._id }).select(
-        'meetingSummary actionItems'
-      );
-      if (pastMom) {
-        pastContext.push({
-          title: pm.title,
-          participants: pm.participants,
-          summary: pastMom.meetingSummary,
-          actionItems: pastMom.actionItems,
-        });
-      }
-    }
-
-    const aiProvider = getAIProvider();
-    const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext });
-
-    job.currentStage = 'mom_generation';
-    job.progressPercent = 90;
-    await job.save();
-
-    const mom = await MOM.findOneAndUpdate(
-      { meetingId: meeting._id },
-      {
-        meetingId: meeting._id,
-        ...momData,
-        language: 'en',
-      },
-      { upsert: true, returnDocument: 'after' }
-    );
-
-    // 4. Complete Job (100%)
-    job.stages.aiAnalysis = { completed: true, completedAt: new Date() };
-    job.stages.momGeneration = { completed: true, completedAt: new Date() };
-    job.currentStage = 'completed';
-    job.progressPercent = 100;
-    await job.save();
-
-    meeting.status = 'completed';
-    await meeting.save();
-
-    res.status(200).json({
+    // ✅ RESPOND IMMEDIATELY (202 Accepted) — don't wait for processing
+    // Flutter's polling timer will detect completion via /processing-status
+    res.status(202).json({
       success: true,
-      message: 'Meeting processed and MOM generated successfully',
-      data: {
-        transcript,
-        mom,
-      },
+      message: 'Processing started. Poll /processing-status for updates.',
+      data: { meetingId: meeting._id, status: 'transcribing' },
     });
+
+    // ─── BACKGROUND PROCESSING (fire-and-forget) ───────────────────────────
+    // Runs AFTER response is sent. No HTTP timeout applies here.
+    setImmediate(async () => {
+      try {
+        // Stage 1: STT Transcription
+        job.currentStage = 'transcription';
+        job.progressPercent = 25;
+        await job.save();
+
+        const sttProvider = getSTTProvider();
+        const audioPath = meeting.audioFile?.path;
+
+        let transcriptResult;
+        if (audioPath && fs.existsSync(audioPath)) {
+          transcriptResult = await sttProvider.transcribe(audioPath, {
+            title: meeting.title,
+            agenda: meeting.agenda,
+            participants: meeting.participants || [],
+          });
+        } else {
+          transcriptResult = {
+            rawText: `Discussion on ${meeting.title}. Participants: ${(meeting.participants || []).join(', ')}.`,
+            segments: [{ speaker: 'Speaker 1', startTime: 0, endTime: 30, text: `Discussion on ${meeting.title}.` }],
+          };
+        }
+
+        const transcript = await Transcript.findOneAndUpdate(
+          { meetingId: meeting._id },
+          {
+            meetingId: meeting._id,
+            rawText: transcriptResult.rawText,
+            segments: transcriptResult.segments,
+            provider: env.providers.stt,
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+
+        // Stage 2: STT complete, start AI analysis
+        job.stages.speechRecognition = { completed: true, completedAt: new Date() };
+        job.stages.speakerIdentification = { completed: true, completedAt: new Date() };
+        job.currentStage = 'ai_analysis';
+        job.progressPercent = 65;
+        await job.save();
+
+        meeting.status = 'analyzing';
+        await meeting.save();
+
+        // Stage 3: AI MOM Generation
+        const pastMeetings = await Meeting.find({
+          userId: meeting.userId,
+          status: 'completed',
+          _id: { $ne: meeting._id },
+        })
+          .sort({ createdAt: -1 })
+          .limit(3)
+          .select('_id title dateTime participants');
+
+        let pastContext = [];
+        for (const pm of pastMeetings) {
+          const pastMom = await MOM.findOne({ meetingId: pm._id }).select('meetingSummary actionItems');
+          if (pastMom) {
+            pastContext.push({
+              title: pm.title,
+              participants: pm.participants,
+              summary: pastMom.meetingSummary,
+              actionItems: pastMom.actionItems,
+            });
+          }
+        }
+
+        const aiProvider = getAIProvider();
+        const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext });
+
+        job.currentStage = 'mom_generation';
+        job.progressPercent = 90;
+        await job.save();
+
+        await MOM.findOneAndUpdate(
+          { meetingId: meeting._id },
+          { meetingId: meeting._id, ...momData, language: 'en' },
+          { upsert: true }
+        );
+
+        // Stage 4: Complete
+        job.stages.aiAnalysis = { completed: true, completedAt: new Date() };
+        job.stages.momGeneration = { completed: true, completedAt: new Date() };
+        job.currentStage = 'completed';
+        job.progressPercent = 100;
+        await job.save();
+
+        meeting.status = 'completed';
+        await meeting.save();
+
+        console.log(`[Process] Meeting ${meeting._id} processed successfully.`);
+      } catch (bgError) {
+        console.error(`[Process] Background error for meeting ${meeting._id}:`, bgError.message);
+        await Meeting.findByIdAndUpdate(meeting._id, { status: 'failed' });
+        await ProcessingJob.findOneAndUpdate(
+          { meetingId: meeting._id },
+          { currentStage: 'failed', error: { message: bgError.message } }
+        );
+      }
+    });
+    // ────────────────────────────────────────────────────────────────────────
+
   } catch (error) {
-    await Meeting.findByIdAndUpdate(req.params.id, { status: 'failed' });
-    await ProcessingJob.findOneAndUpdate(
-      { meetingId: req.params.id },
-      { currentStage: 'failed', error: { message: error.message } }
-    );
     next(error);
   }
 };
+
 
 /**
  * @desc    Get processing status & real-time progress percentage
@@ -293,10 +309,12 @@ const getProcessingStatus = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        status: meeting?.status || 'unknown',
+        meetingStatus: meeting?.status || 'unknown', // Primary field Flutter checks
+        status: meeting?.status || 'unknown',        // Legacy alias
         currentStage: job?.currentStage || 'transcription',
         progressPercent: job?.progressPercent || 0,
         duration: meeting?.duration || 0,
+        error: job?.error?.message || null,
         job,
       },
     });

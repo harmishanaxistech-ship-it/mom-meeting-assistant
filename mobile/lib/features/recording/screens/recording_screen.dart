@@ -356,8 +356,8 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
       fileSizeMB = (File(_recordedFilePath!).lengthSync() / (1024 * 1024)).ceil();
     }
 
-    // Dynamic time estimation: ~10 seconds base + ~1.5 seconds per MB
-    final estimatedSeconds = (15 + (fileSizeMB * 1.5)).toInt().clamp(20, 120);
+    // Dynamic time estimation: ~15s base + 2s per MB (GPT-4o is slower than mini)
+    final estimatedSeconds = (15 + (fileSizeMB * 2)).toInt().clamp(30, 300);
 
     setState(() {
       _isProcessing = true;
@@ -392,56 +392,111 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
             duration: _recordDurationSeconds,
           );
 
-      // Step 3: Trigger STT & OpenAI MOM processing
+      // Step 3: Kick off async STT & AI processing (returns 202 immediately)
       setState(() {
-        _processingStage = 'OpenAI Whisper (Transcribing Audio)...';
+        _processingStage = 'Starting OpenAI Whisper transcription...';
         if (_processingPercentage < 35.0) _processingPercentage = 35.0;
       });
 
-      final response = await client.dio.post(
+      // POST /process returns 202 immediately — backend runs in background
+      await client.dio.post(
         '${ApiConstants.meetings}/${widget.meeting.id}/process',
       );
 
-      _processingTimer?.cancel();
+      setState(() {
+        _processingStage = 'AI is transcribing your audio with Whisper...';
+        if (_processingPercentage < 40.0) _processingPercentage = 40.0;
+      });
+
+      // Step 4: Poll /processing-status until completed or failed
       _pollingTimer?.cancel();
-
-      if (response.data['success'] == true) {
-        setState(() {
-          _processingPercentage = 100.0;
-          _processingStage = 'Completed!';
-        });
-
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        ref.read(meetingControllerProvider.notifier).fetchMeetings();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppTheme.accentColor,
-              content: Text('🎉 OpenAI Generated MOM from your Audio!'),
-            ),
-          );
-          Navigator.of(context).pop();
+      _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+        if (!mounted) {
+          timer.cancel();
+          return;
         }
-      } else {
-        throw Exception(response.data['error'] ?? 'Processing failed');
-      }
+        try {
+          final res = await client.dio.get(
+            '${ApiConstants.meetings}/${widget.meeting.id}/processing-status',
+          );
+          if (res.data['success'] == true) {
+            final data = res.data['data'];
+            final stage = data['currentStage'] as String? ?? '';
+            final percent = (data['progressPercent'] as num?)?.toDouble() ?? 0.0;
+            final meetingStatus = data['meetingStatus'] as String? ?? '';
+
+            if (mounted && percent > _processingPercentage) {
+              setState(() {
+                _processingPercentage = percent;
+                if (stage == 'transcription') {
+                  _processingStage = 'OpenAI Whisper: Transcribing Audio...';
+                } else if (stage == 'ai_analysis') {
+                  _processingStage = 'GPT-4o: Extracting Structured MOM...';
+                } else if (stage == 'mom_generation') {
+                  _processingStage = 'Finalising Minutes of Meeting...';
+                }
+              });
+            }
+
+            // ✅ Completed
+            if (stage == 'completed' || meetingStatus == 'completed') {
+              timer.cancel();
+              _processingTimer?.cancel();
+
+              if (mounted) {
+                setState(() {
+                  _processingPercentage = 100.0;
+                  _processingStage = 'MOM Generated Successfully!';
+                });
+
+                await Future.delayed(const Duration(milliseconds: 800));
+
+                if (!mounted) return;
+                ref.read(meetingControllerProvider.notifier).fetchMeetings();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    backgroundColor: Color(0xFF10B981),
+                    content: Text('🎉 MOM generated from your recording!'),
+                  ),
+                );
+                Navigator.of(context).pop();
+              }
+            }
+
+            // ❌ Failed
+            if (stage == 'failed' || meetingStatus == 'failed') {
+              timer.cancel();
+              _processingTimer?.cancel();
+              if (mounted) {
+                setState(() => _isProcessing = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: Colors.red.shade700,
+                    content: Text('Processing failed: ${data['error'] ?? 'Unknown error'}'),
+                  ),
+                );
+              }
+            }
+          }
+        } catch (_) {
+          // Ignore polling errors (tunnel may be momentarily unreachable)
+        }
+      });
     } catch (e) {
       _processingTimer?.cancel();
       _pollingTimer?.cancel();
       if (mounted) {
-        setState(() {
-          _isProcessing = false;
-        });
+        setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: AppTheme.errorColor,
-            content: Text('Processing error: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red.shade700,
+            content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
           ),
         );
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
