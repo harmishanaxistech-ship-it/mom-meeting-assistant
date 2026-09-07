@@ -146,110 +146,212 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
 
   Future<void> _pickAudioFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'mp4'],
-      );
+      FilePickerResult? result;
 
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        final name = result.files.single.name;
-        final file = File(path);
-        // Validate duration using AudioPlayer (Strict 30-minute limit = 1800 seconds)
-        final tempPlayer = AudioPlayer();
-        Duration? audioDuration;
+      // Primary attempt: custom audio extensions
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'mp4', 'opus', 'wma', 'amr'],
+        );
+      } catch (e1) {
+        debugPrint('Custom file picker failed: $e1. Trying FileType.audio...');
         try {
-          audioDuration = await tempPlayer.setFilePath(path);
-        } catch (_) {}
-        await tempPlayer.dispose();
-
-        if (audioDuration != null && audioDuration.inSeconds > 1800) {
-          final mins = (audioDuration.inSeconds / 60).toStringAsFixed(1);
-          if (mounted) {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Row(
-                  children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Text('Audio Too Long'),
-                  ],
-                ),
-                content: Text(
-                  'The selected audio is $mins minutes long.\n\nOnly audio files up to 30 minutes are allowed.',
-                ),
-                actions: [
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('OK, Choose Another'),
-                  ),
-                ],
-              ),
-            );
-          }
-          return;
+          // Fallback 1: Native audio category
+          result = await FilePicker.platform.pickFiles(type: FileType.audio);
+        } catch (e2) {
+          debugPrint('Audio file picker failed: $e2. Trying FileType.any...');
+          // Fallback 2: Any file
+          result = await FilePicker.platform.pickFiles(type: FileType.any);
         }
+      }
 
-        setState(() {
-          _recordedFilePath = path;
-          _pickedFileName = name;
-        });
+      if (result == null || result.files.isEmpty) {
+        // User dismissed the picker without choosing
+        return;
+      }
 
+      final pickedFile = result.files.single;
+      final path = pickedFile.path;
+      final name = pickedFile.name;
+
+      if (path == null) {
         if (mounted) {
-          final durationLabel = audioDuration != null
-              ? '${(audioDuration.inSeconds ~/ 60).toString().padLeft(2, '0')}:${(audioDuration.inSeconds % 60).toString().padLeft(2, '0')}'
-              : 'Under 30 mins';
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not access the selected file. Please select a local file on your device.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
+      // Check extension if picked through FileType.any
+      final ext = name.split('.').last.toLowerCase();
+      final validExtensions = ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'mp4', 'opus', 'wma', 'amr'];
+      if (!validExtensions.contains(ext)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('".$ext" is not a supported audio format. Please choose MP3, M4A, WAV, or AAC.'),
+              backgroundColor: Colors.orange.shade800,
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = File(path);
+      if (!file.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('The selected file does not exist on disk.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Validate duration using AudioPlayer (Limit: 30 minutes = 1800 seconds)
+      final tempPlayer = AudioPlayer();
+      Duration? audioDuration;
+      try {
+        audioDuration = await tempPlayer.setFilePath(path);
+      } catch (_) {}
+      await tempPlayer.dispose();
+
+      if (audioDuration != null && audioDuration.inSeconds > 1800) {
+        final mins = (audioDuration.inSeconds / 60).toStringAsFixed(1);
+        if (mounted) {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Audio File Selected'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.audio_file, color: AppTheme.primaryColor),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Duration: $durationLabel (Max: 30:00)'),
-                  const SizedBox(height: 4),
-                  Text('Size: ${(file.lengthSync() / (1024 * 1024)).toStringAsFixed(2)} MB'),
-                  const SizedBox(height: 12),
-                  const Text('Ready to upload and process with OpenAI.'),
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Audio Too Long'),
                 ],
               ),
+              content: Text(
+                'The selected audio is $mins minutes long.\n\nOnly audio files up to 30 minutes are supported.',
+              ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancel'),
-                ),
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _uploadAndProcessMeeting();
-                  },
-                  child: const Text('Upload & Process with OpenAI'),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('OK, Choose Another'),
                 ),
               ],
             ),
           );
         }
+        return;
+      }
+
+      final fileSizeMB = file.lengthSync() / (1024 * 1024);
+      if (fileSizeMB > 150) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('File size (${fileSizeMB.toStringAsFixed(1)} MB) exceeds the 150 MB limit.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _recordedFilePath = path;
+        _pickedFileName = name;
+        if (audioDuration != null) {
+          _recordDurationSeconds = audioDuration.inSeconds;
+        }
+      });
+
+      if (mounted) {
+        final durationLabel = audioDuration != null
+            ? '${(audioDuration.inSeconds ~/ 60).toString().padLeft(2, '0')}:${(audioDuration.inSeconds % 60).toString().padLeft(2, '0')}'
+            : 'Detected';
+
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle_outline, color: AppTheme.accentColor),
+                SizedBox(width: 8),
+                Text('Audio File Selected'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.audio_file, color: AppTheme.primaryColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('⏱ Duration: $durationLabel', style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 4),
+                Text('💾 Size: ${fileSizeMB.toStringAsFixed(2)} MB', style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 14),
+                const Text(
+                  'Ready to generate AI Minutes of Meeting.',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _uploadAndProcessMeeting();
+                },
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: const Text('Upload & Process MOM'),
+              ),
+            ],
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('File picker error: $e')),
+          SnackBar(
+            content: Text('File selection error: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
