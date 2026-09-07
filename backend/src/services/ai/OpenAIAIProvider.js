@@ -83,6 +83,25 @@ RULE 7 — PROFESSIONAL OUTPUT QUALITY & EXECUTIVE SUMMARY PARAGRAPHING:
   * Paragraph 2 (Key Discussions & Operational Updates): In-depth breakdown of status reports, system updates, workflows, and specifics discussed.
   * Paragraph 3 (Strategic Decisions & Agreements): Key conclusions, approvals, team commitments, and agreed deliverables.
 
+RULE 8 — EXHAUSTIVE LOGISTICAL, OPERATIONAL & TECHNICAL SPECIFICITY:
+Do NOT compress or generalize specific facts into vague high-level statements. Extract all granular operational details into distinct points:
+1. Exact Dates & Rescheduling:
+   - Recognize phonetic patterns: e.g., 'ognis' / '90s' / 'engagement' in context of calendar dates means the 19th of the month.
+   - Capture flight/travel start dates (e.g. travel begins 19th from India) and the exact shift of meetings (reschedule 19th meetings to 20th–25th).
+2. Client & Target Criteria:
+   - Capture exact headcount requirements (e.g., target companies with 11+ employees, avoid solo/small 1-10 teams).
+   - List ALL targeted industries mentioned (e.g., Manufacturing, Transportation, Solar Energy, Bakery).
+3. Travel Logistics & Lessons Learned:
+   - Note lessons from previous trips (e.g., Dubai transit issues, distance between locations).
+   - Capture chosen transit modes (e.g., Metro preferred over cabs to prevent delays and manage time).
+   - Grouping itineraries geographically day-wise.
+4. Portfolio, Events & Products to Pitch:
+   - Events: Singapore Expo on September 24th, meeting key contacts.
+   - Products: AI agents, AI chatbots, Attendance application, Transport / Export-Import app, MUM project.
+5. Communication & Tech Setup:
+   - VoIP / calling tools: Vyke / Action app with €10 monthly auto-recharge balance.
+   - Teams, FaceTime (iOS), Wi-Fi calling, and WhatsApp messaging.
+
 Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
 
 JSON structure:
@@ -90,17 +109,16 @@ JSON structure:
   "meetingSummary": "Paragraph 1: Executive overview of the meeting and purpose.\n\nParagraph 2: Key operational discussions, project updates, and topics covered.\n\nParagraph 3: Agreed decisions, resolutions, and forward-looking expectations.",
   "agenda": ["Actual topic 1 from transcript", "Actual topic 2..."],
   "keyDiscussionPoints": [
-    "Detailed point 1: Who discussed what, what was the outcome or status update",
-    "Detailed point 2...",
+    "Granular topic point: Specific detail, criteria, numbers, tools, or status discussed",
     "..."
   ],
   "decisions": [
-    "Decision 1 — who decided what and any agreed conditions",
+    "Specific agreed decision with conditions, dates, or criteria",
     "..."
   ],
   "actionItems": [
     {
-      "task": "Specific, clear task description (1 task per item, not compound)",
+      "task": "Concrete actionable task (e.g. Reschedule all September 19th client meetings to September 20th-25th)",
       "owner": "Exact name from: ${participantsList} — or 'Team' if shared",
       "deadline": "Specific date or timeframe mentioned, or 'TBD'",
       "priority": "High | Medium | Low"

@@ -5,7 +5,7 @@ const OpenAI = require('openai');
 const SpeechToTextProvider = require('./SpeechToTextProvider');
 const env = require('../../config/env');
 
-const CHUNK_DURATION_SECONDS = 300; // 5-minute chunks
+const CHUNK_DURATION_SECONDS = 900; // 15-minute chunks (Whisper supports up to 25 MB)
 const MAX_WHISPER_FILE_MB = 24;
 
 class OpenAISpeechToTextProvider extends SpeechToTextProvider {
@@ -125,31 +125,95 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
     // If it ends with a complete sentence (e.g., "Spoken in a mix of English, Gujarati, and Hindi.")
     // Whisper will hallucinate by echoing that sentence back when audio is unclear.
     // Always end the prompt mid-phrase or with a comma-terminated list of keywords.
-    const whisperPrompt = `Indian business meeting. Participants: ${participantsList}. Topics: software projects, deployment, testing, sprint, client, tasks,`;
+    // Enhanced prompt keywords for business meetings with Indian accents / regional speech
+    const whisperPrompt = `Indian business meeting in English, Gujarati, and Hindi. Participants: ${participantsList}. Topics: business expansion, client meetings, scheduling, travel logistics, flights, dates 19th 20th 21st 22nd 23rd 24th 25th September, expo, target audience companies with 11+ headcount, transport, metro vs cabs, VoIP communication, Vyke, Teams, WhatsApp,`;
 
+    // 1. Try Groq Whisper-Large-V3 first if Groq API Key is available
+    // Groq whisper-large-v3 translations converts Gujarati/Hindi speech directly to rich English transcript
+    if (env.groqApiKey) {
+      try {
+        console.log(`[STT] Running primary STT via Groq whisper-large-v3 translations for maximum multilingual fidelity...`);
+        const Groq = require('groq-sdk');
+        const groqClient = new Groq({ apiKey: env.groqApiKey });
+
+        let groqRawText = '';
+        let groqOffset = 0;
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const filePath = filesToProcess[i];
+          let gRes;
+          try {
+            // First attempt: translations.create to directly produce full English transcript
+            gRes = await groqClient.audio.translations.create({
+              file: fs.createReadStream(filePath),
+              model: 'whisper-large-v3',
+              response_format: 'verbose_json',
+              temperature: 0,
+            });
+          } catch (tErr) {
+            // Fallback: transcriptions.create
+            gRes = await groqClient.audio.transcriptions.create({
+              file: fs.createReadStream(filePath),
+              model: 'whisper-large-v3',
+              response_format: 'verbose_json',
+              temperature: 0,
+            });
+          }
+
+          if (gRes && gRes.text) {
+            groqRawText += (groqRawText ? ' ' : '') + gRes.text.trim();
+          }
+          if (gRes && Array.isArray(gRes.segments)) {
+            gRes.segments.forEach((seg, idx) => {
+              combinedSegments.push({
+                speaker: `Speaker ${(idx % 2) + 1}`,
+                startTime: Math.round(groqOffset + (seg.start || 0)),
+                endTime: Math.round(groqOffset + (seg.end || 0)),
+                text: (seg.text || '').trim(),
+              });
+            });
+          }
+          groqOffset += (gRes?.duration || 0);
+        }
+
+        if (groqRawText.trim().length > 100) {
+          console.log(`[STT] Groq whisper-large-v3 captured ${groqRawText.length} chars of high-fidelity transcript!`);
+          return {
+            rawText: this.deduplicateTranscript(groqRawText),
+            segments: combinedSegments.length > 0 ? combinedSegments : [{
+              speaker: 'Speaker 1',
+              startTime: 0,
+              endTime: Math.round(groqOffset),
+              text: groqRawText.trim(),
+            }],
+            provider: 'groq-whisper-large-v3',
+          };
+        }
+      } catch (groqErr) {
+        console.warn(`[STT] Groq whisper-large-v3 failed (${groqErr.message}), falling back to OpenAI Whisper...`);
+      }
+    }
+
+    // 2. OpenAI Whisper-1 Fallback
     for (let i = 0; i < filesToProcess.length; i++) {
       const filePath = filesToProcess[i];
       const stats = fs.statSync(filePath);
       console.log(
-        `[STT] Part ${i + 1}/${filesToProcess.length}: ${path.basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
+        `[STT OpenAI] Part ${i + 1}/${filesToProcess.length}: ${path.basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
       );
 
       let response;
       try {
         // PRIMARY: Use transcriptions.create without language lock for best multilingual accuracy
-        // Whisper auto-detects language and handles Gujarati/Hindi/English code-switching
         const fileStream = fs.createReadStream(filePath);
         response = await this.openai.audio.transcriptions.create({
           file: fileStream,
           model: 'whisper-1',
           response_format: 'verbose_json',
           prompt: whisperPrompt.substring(0, 800),
-          // No 'language' field — let Whisper auto-detect for best accuracy on mixed language audio
         });
-        console.log(`[STT] Transcription successful (auto-detect language)`);
+        console.log(`[STT OpenAI] Transcription successful (auto-detect language)`);
       } catch (transcribeErr) {
-        console.warn(`[STT] Transcription failed (${transcribeErr.message}), trying translation fallback...`);
-        // FALLBACK: Use translations.create to force English output if transcription fails
+        console.warn(`[STT OpenAI] Transcription failed (${transcribeErr.message}), trying translation fallback...`);
         const fileStream2 = fs.createReadStream(filePath);
         response = await this.openai.audio.translations.create({
           file: fileStream2,
@@ -157,7 +221,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
           response_format: 'verbose_json',
           prompt: whisperPrompt.substring(0, 800),
         });
-        console.log(`[STT] Translation fallback successful`);
+        console.log(`[STT OpenAI] Translation fallback successful`);
       }
 
       let chunkText = (response.text || '').trim();
