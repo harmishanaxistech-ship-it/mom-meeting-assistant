@@ -6,6 +6,7 @@ const SpeechToTextProvider = require('./SpeechToTextProvider');
 const env = require('../../config/env');
 
 const CHUNK_DURATION_SECONDS = 300; // 5-minute chunks
+const MAX_WHISPER_FILE_MB = 24;
 
 class OpenAISpeechToTextProvider extends SpeechToTextProvider {
   constructor() {
@@ -17,9 +18,7 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
   }
 
   /**
-   * Preprocesses audio losslessly or splits into chunks if duration > 5 minutes
-   * @param {string} audioFilePath
-   * @returns {Array<string>} Array of chunk file paths
+   * Splits large audio files into chunks using FFmpeg stream copy (no re-encoding = lossless)
    */
   prepareAudioFiles(audioFilePath) {
     let duration = 0;
@@ -36,78 +35,106 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
     const stats = fs.statSync(audioFilePath);
     const sizeMB = stats.size / (1024 * 1024);
 
-    // If audio is under 5 mins and under 24MB, process file directly (lossless)
-    if (duration > 0 && duration <= CHUNK_DURATION_SECONDS && sizeMB < 24) {
+    // If audio is short enough and small enough, process as-is (no re-encoding)
+    if (duration > 0 && duration <= CHUNK_DURATION_SECONDS && sizeMB < MAX_WHISPER_FILE_MB) {
       return [audioFilePath];
     }
 
     const dir = path.dirname(audioFilePath);
     const baseName = path.basename(audioFilePath, path.extname(audioFilePath));
-    const chunkPattern = path.join(dir, `${baseName}_part_%03d.m4a`);
+    const chunkPattern = path.join(dir, `${baseName}_chunk_%03d.m4a`);
 
     console.log(
-      `[Whisper STT] Audio length: ${(duration / 60).toFixed(1)} mins (${sizeMB.toFixed(1)} MB). Chunking into 5-minute pieces...`
+      `[STT] Audio: ${(duration / 60).toFixed(1)} min (${sizeMB.toFixed(1)} MB) - chunking into 5-min pieces...`
     );
 
     try {
+      // Remove old chunk files first
       const existing = fs
         .readdirSync(dir)
-        .filter((f) => f.startsWith(`${baseName}_part_`) && f.endsWith('.m4a'));
-      for (const f of existing) {
-        fs.unlinkSync(path.join(dir, f));
-      }
+        .filter((f) => f.startsWith(`${baseName}_chunk_`) && f.endsWith('.m4a'));
+      for (const f of existing) fs.unlinkSync(path.join(dir, f));
 
       execSync(
         `ffmpeg -y -i "${audioFilePath}" -f segment -segment_time ${CHUNK_DURATION_SECONDS} -c copy "${chunkPattern}"`,
         { stdio: 'pipe' }
       );
 
-      const chunkFiles = fs
+      const chunks = fs
         .readdirSync(dir)
-        .filter((f) => f.startsWith(`${baseName}_part_`) && f.endsWith('.m4a'))
+        .filter((f) => f.startsWith(`${baseName}_chunk_`) && f.endsWith('.m4a'))
         .sort()
         .map((f) => path.join(dir, f));
 
-      return chunkFiles.length > 0 ? chunkFiles : [audioFilePath];
+      return chunks.length > 0 ? chunks : [audioFilePath];
     } catch (err) {
-      console.error('[Whisper STT] Chunking failed, using original file:', err.message);
+      console.error('[STT] Chunking failed, using original:', err.message);
       return [audioFilePath];
     }
   }
 
   /**
-   * Transcribes/Translates audio with Whisper-1 using multilingual translation for flawless Gujarati, Hindi, and English processing
-   * @param {string} audioFilePath
-   * @param {Object} options
+   * Removes Whisper hallucination loops — repeating sentences/phrases that appear 3+ times
+   * This is a common Whisper failure mode on low-quality or trailing audio
+   */
+  deduplicateTranscript(text) {
+    if (!text || text.length < 50) return text;
+
+    // Split into sentences
+    const sentences = text.split(/(?<=[.?!])\s+/);
+    const seen = new Map();
+    const result = [];
+
+    for (const sentence of sentences) {
+      const normalized = sentence.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!normalized || normalized.length < 5) continue;
+
+      const count = seen.get(normalized) || 0;
+      // Allow up to 2 occurrences (genuine repetition), but drop beyond that
+      if (count < 2) {
+        result.push(sentence.trim());
+        seen.set(normalized, count + 1);
+      }
+    }
+
+    return result.join(' ');
+  }
+
+  /**
+   * Main transcription method: uses OpenAI Whisper-1 audio translation for
+   * multilingual Indian business meetings (Gujarati, Hindi, English, code-switching)
    */
   async transcribe(audioFilePath, options = {}) {
     if (!fs.existsSync(audioFilePath)) {
-      throw new Error(`Audio file does not exist at path: ${audioFilePath}`);
+      throw new Error(`Audio file not found: ${audioFilePath}`);
     }
 
-    const filesToTranscribe = this.prepareAudioFiles(audioFilePath);
+    const filesToProcess = this.prepareAudioFiles(audioFilePath);
 
     let combinedRawText = '';
     const combinedSegments = [];
     let timeOffsetSeconds = 0;
 
-    const participantsList = Array.isArray(options.participants) && options.participants.length > 0
-      ? options.participants.join(', ')
-      : '';
-    const titleText = options.title || 'Team Meeting';
-    const agendaText = options.agenda || '';
+    const participantsList =
+      Array.isArray(options.participants) && options.participants.length > 0
+        ? options.participants.join(', ')
+        : 'Priyanka, Harmish, Vijay, Jay';
 
-    let whisperPrompt = `Indian business meeting discussion with participants: ${participantsList || 'Priyanka, Harmish, Vijay, Jay, Amit'}. Topics include software projects (Invest, B-Line, LJE Sports, Huddle sports app, Pickleball, Seward, Lehar), testing before holidays, Monday feedback compilation, deployment updates, and team resource planning.`;
+    // Build a context-rich prompt for Whisper to improve recognition accuracy
+    // Whisper uses this as prior context, dramatically improving name & term recognition
+    const whisperPrompt = `Indian business meeting. Participants: ${participantsList}. Software development team discussing projects, tasks, testing, deployments, and sprint updates. Spoken in a mix of English, Gujarati, and Hindi.`;
 
-    for (let i = 0; i < filesToTranscribe.length; i++) {
-      const filePath = filesToTranscribe[i];
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const filePath = filesToProcess[i];
       const stats = fs.statSync(filePath);
       console.log(
-        `[Whisper STT] Processing part ${i + 1}/${filesToTranscribe.length}: ${path.basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
+        `[STT] Part ${i + 1}/${filesToProcess.length}: ${path.basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
       );
 
-      // Using OpenAI audio translations to convert Gujarati/Hindi/English mixed speech into crystal-clear English text
       const fileStream = fs.createReadStream(filePath);
+
+      // Use translations.create → converts Gujarati/Hindi/mixed speech directly to English
+      // This avoids the "language not supported" error for 'gu' in transcriptions.create
       const response = await this.openai.audio.translations.create({
         file: fileStream,
         model: 'whisper-1',
@@ -115,41 +142,51 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         prompt: whisperPrompt.substring(0, 800),
       });
 
-      if (response.text) {
-        combinedRawText += (combinedRawText ? ' ' : '') + response.text.trim();
+      let chunkText = (response.text || '').trim();
+
+      // De-duplicate Whisper hallucination loops before adding to combined transcript
+      chunkText = this.deduplicateTranscript(chunkText);
+
+      if (chunkText) {
+        combinedRawText += (combinedRawText ? ' ' : '') + chunkText;
       }
 
-      const fileDuration = response.duration || 0;
+      const chunkDuration = response.duration || 0;
 
+      // Build time-stamped segments for display in the transcript view
       if (Array.isArray(response.segments)) {
-        response.segments.forEach((seg, idx) => {
-          combinedSegments.push({
-            speaker: `Speaker ${(idx % (options.participants?.length || 2)) + 1}`,
-            startTime: Math.round(timeOffsetSeconds + (seg.start || 0)),
-            endTime: Math.round(timeOffsetSeconds + (seg.end || 0)),
-            text: (seg.text || '').trim(),
-          });
+        response.segments.forEach((seg) => {
+          const segText = (seg.text || '').trim();
+          if (segText) {
+            combinedSegments.push({
+              speaker: 'Speaker',
+              startTime: Math.round(timeOffsetSeconds + (seg.start || 0)),
+              endTime: Math.round(timeOffsetSeconds + (seg.end || 0)),
+              text: segText,
+            });
+          }
         });
       }
 
-      timeOffsetSeconds += fileDuration;
+      timeOffsetSeconds += chunkDuration;
 
-      // Clean up chunk file if it's not the original uploaded file
+      // Cleanup temporary chunk files (not original)
       if (filePath !== audioFilePath && fs.existsSync(filePath)) {
-        try {
-          fs.unlinkSync(filePath);
-        } catch (_) {}
+        try { fs.unlinkSync(filePath); } catch (_) {}
       }
     }
 
+    // Fallback: if no segments were built, wrap the full text as one segment
     if (combinedSegments.length === 0 && combinedRawText.trim().length > 0) {
       combinedSegments.push({
-        speaker: 'Speaker 1',
+        speaker: 'Speaker',
         startTime: 0,
         endTime: Math.round(timeOffsetSeconds),
         text: combinedRawText.trim(),
       });
     }
+
+    console.log(`[STT] Final transcript: ${combinedRawText.length} chars, ${combinedSegments.length} segments`);
 
     return {
       rawText: combinedRawText,

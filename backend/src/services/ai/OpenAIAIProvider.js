@@ -11,132 +11,116 @@ class OpenAIAIProvider extends AIProvider {
   }
 
   /**
-   * Generates an exhaustive, high-depth structured MOM from meeting details and transcript using GPT-4o-mini
-   * Strictly grounded in the actual spoken audio/transcript, completely decoupled from any misleading meeting titles or descriptions.
+   * Generates a structured, accurate MOM from meeting transcript using GPT-4o.
+   *
+   * KEY DESIGN PRINCIPLES:
+   * 1. The MOM is 100% based on the actual spoken transcript — never on the meeting title.
+   * 2. We use GPT-4o (not mini) for accurate instruction following on complex prompts.
+   * 3. Speaker attribution is inferred from context, not from generic "Speaker 1/2" labels.
+   * 4. Action items are split into individual tasks per person mentioned.
    */
   async generateMOM(meetingData, transcriptData, options = {}) {
     const rawTranscript =
       transcriptData.rawText ||
-      (transcriptData.segments || []).map((s) => `${s.speaker}: ${s.text}`).join('\n');
+      (transcriptData.segments || []).map((s) => s.text).join(' ');
 
-    const participantsList = Array.isArray(meetingData.participants) && meetingData.participants.length > 0
-      ? meetingData.participants.join(', ')
-      : 'N/A';
-
-    // Build historical context from previous daily meetings for continuous learning
-    let historyContextBlock = '';
-    if (Array.isArray(options.pastContext) && options.pastContext.length > 0) {
-      historyContextBlock = `
-HISTORICAL RECURRING MEETING CONTEXT (Learned from previous sessions):
-${options.pastContext
-  .map(
-    (p, idx) => `
-[Past Meeting ${idx + 1}: "${p.title}"]
-- Attendees: ${(p.participants || []).join(', ')}
-- Previous Summary: ${p.summary || 'N/A'}
-- Pending / Previous Action Items: ${(p.actionItems || []).map((a) => `${a.owner}: ${a.task} (${a.priority})`).join('; ') || 'None'}
-`
-  )
-  .join('\n')}
-Use the above past meeting history to understand ongoing project threads, recurrent topics, and the typical functional roles of ${participantsList}.
-`;
+    if (!rawTranscript || rawTranscript.trim().length < 20) {
+      return this._emptyMOM('No transcript available to generate MOM from.');
     }
 
-    const systemPrompt = `
-You are a senior executive secretary and meeting intelligence expert specializing in multi-speaker meetings conducted in English, Gujarati (ગુજરાતી), Hindi (हिन्दी), or code-switched Hinglish/Gujlish.
+    const participantsList =
+      Array.isArray(meetingData.participants) && meetingData.participants.length > 0
+        ? meetingData.participants.join(', ')
+        : 'Unknown';
 
-CRITICAL DIRECTIVES FROM EXECUTIVE LEADERSHIP (PRIYANKA MA'AM & MANAGEMENT):
+    // Historical meeting context for recurring teams (last 3 meetings)
+    let historyBlock = '';
+    if (Array.isArray(options.pastContext) && options.pastContext.length > 0) {
+      historyBlock = `\nHISTORICAL CONTEXT (previous meetings, for continuity only):\n`;
+      options.pastContext.forEach((p, idx) => {
+        historyBlock += `[Past Meeting ${idx + 1}: "${p.title}"]\n`;
+        historyBlock += `- Attendees: ${(p.participants || []).join(', ')}\n`;
+        historyBlock += `- Summary: ${(p.summary || 'N/A').substring(0, 300)}\n`;
+        historyBlock += `- Open Action Items: ${
+          (p.actionItems || []).map((a) => `${a.owner}: ${a.task}`).join('; ') || 'None'
+        }\n\n`;
+      });
+    }
 
-1. **100% REAL CONVERSATION GROUNDING (NEVER RELY ON THE MEETING TITLE OR CREATION DATA)**:
-   - Meeting titles are often placeholder names, codes (e.g. Alpha, Beta, Tango, Charlie), ad-hoc labels, or generic defaults (e.g., "Sales Review Meeting", "General Discussion").
-   - You MUST IGNORE the meeting title when determining the subject of the meeting.
-   - Summarize and extract points EXCLUSIVELY from what the attendees ACTUALLY spoke in the transcript.
-   - If the title says "Sales Review" but Priyanka, Harmish, and Vijay actually discussed:
-     - Reviewing the AI meeting tool capabilities
-     - Speaker voice recognition vs name introduction
-     - Projects discussed: Invest (iOS deployment), B-Line (25 test emails), LJE Sports (testing report)
-     - Pre-holiday deliverables vs Monday post-holiday client feedback
-     - LLM comparison: Google Gemini vs OpenAI vs Groq
-     - Generic news / US politics (e.g. Trump, America)
-   - Then the MOM MUST be 100% about the AI tool review, LLM comparison, and project deliverables, with ZERO mention of sales!
+    const systemPrompt = `You are an expert executive meeting secretary. Your job is to produce accurate, detailed Minutes of Meeting (MOM) documents from meeting transcripts.
 
-2. **MENTION EVERY SINGLE TOPIC, PROJECT, & PERSON (LEAVE ZERO DETAILS OUT)**:
-   - Project & Entity Recognition: Capture every project mentioned (Invest, B-Line, LJE Sports, Gemini, OpenAI, Groq, Whisper, iOS deployment, test emails).
-   - Side & General Discussions: Capture all exploratory discussions, third-party topics (e.g., news, political commentary, general opinions).
-   - Speaker Attribution: Clearly state who contributed what:
-     * Priyanka's directives & vision (tool evaluation, comparing 3 LLMs: Gemini vs OpenAI vs Groq, holiday prep logic).
-     * Harmish's updates (tool review, current OpenAI & Groq APIs integration).
-     * Vijay's updates & suggestions (teams reports, Google Gemini accuracy for translation).
+STRICT RULES — READ CAREFULLY:
 
-3. **INTELLIGENT TO-DOS & INFERRED LOGICAL ACTION ITEMS**:
-   - Extract both explicit instructions AND logical next to-dos based on meeting context:
-     * Specific deliverables before 3-day holiday (e.g. Vijay submitting LJE Sports testing report, Harmish deploying iOS Invest and creating 25 emails in B-Line).
-     * Start of the week / Monday follow-up to-dos (e.g. Awaiting client feedback on delivered site, scheduling next LLM comparison test).
-     * Comparative evaluation to-dos (e.g. Download meeting recording, upload to Google Gemini, compare output against OpenAI & Groq, decide which model to keep).
+RULE 1 — BASE EVERYTHING ON THE TRANSCRIPT ONLY:
+The transcript is the single source of truth. The meeting title is just a label (e.g., "Alpha", "sports", "test", "general discussion") and may have nothing to do with the actual conversation. You MUST completely ignore the meeting title and extract everything from what was actually spoken.
 
-4. **EXACT PARTICIPANT ATTRIBUTION & NORMALIZATION**:
-   - Official Verified Attendees: [${participantsList}].
-   - Match phonetic or casual names (e.g., "Priyanka", "Harmish", "Vijay", "Jay", "Amit") to the official attendee spelling.
-   - Output ONLY exact official names in 'owner' fields.
+RULE 2 — CAPTURE ALL TOPICS DISCUSSED:
+Identify EVERY subject, project, task, tool, platform, or person mentioned in the transcript, no matter how briefly. Common topics include: software projects, app features, deployments, testing updates, client follow-ups, tools, platforms, API integrations, sales pipelines, business strategies, etc.
 
-5. **COLLOQUIAL GUJARATI & HINDI TASK EXTRACTION & MULTI-ACTION SPLITTING**:
-   - Interpret phrases like "કરી દેજે", "ટેસ્ટિંગ માં મૂકી દેજે", "બનાવી દેજે", "કર લેના", "દેખ લેના" as direct tasks.
-   - Split compound instructions into separate Action Items with the correct owner.
+RULE 3 — ACCURATE SPEAKER/OWNER ATTRIBUTION:
+The transcript may not have clear speaker labels. Use contextual clues to attribute tasks:
+- Names are often mentioned directly: "Vijay, can you do this?" → owner = Vijay
+- First-person reports: "I deployed the API" + context clues → attribute to likely speaker
+- If truly unclear, use the most contextually appropriate participant name or "Team"
+- Never assign ALL tasks to one person unless explicitly stated in the transcript
 
-Return strictly valid JSON conforming to this exact structure with NO markdown formatting or backticks:
+RULE 4 — SPLIT COMPOUND TASKS:
+If one sentence contains multiple instructions for multiple people (e.g., "Vijay deploy the server, Jay update the UI, and Harmish send the email"), split them into 3 separate action items with correct owners.
+
+RULE 5 — INFER LOGICAL ACTION ITEMS:
+Beyond explicit "do this" statements, infer obvious to-dos:
+- Upcoming deadlines mentioned → action item with deadline
+- "We need to test X before Y date" → action item with deadline
+- "Follow up with client on Monday" → action item
+
+RULE 6 — DO NOT FABRICATE OR ASSUME:
+Only output what is supported by the transcript. If something was NOT discussed, do not include it.
+
+RULE 7 — PROFESSIONAL OUTPUT QUALITY:
+Write in clear, professional business English. Transform informal/colloquial speech (Hinglish, Gujlish) into formal professional language while preserving the meaning exactly.
+
+Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
+
+JSON structure:
 {
-  "meetingSummary": "Comprehensive, multi-paragraph detailed executive summary capturing the REAL discussion topics, speaker contributions, project updates, and strategic outcomes.",
-  "agenda": [
-    "Actual discussion topic 1 as spoken",
-    "Actual discussion topic 2..."
-  ],
+  "meetingSummary": "Multi-paragraph executive summary of what was ACTUALLY discussed. Be thorough and specific — mention every project, person, decision, and update covered.",
+  "agenda": ["Actual topic 1 from transcript", "Actual topic 2..."],
   "keyDiscussionPoints": [
-    "Detailed discussion topic 1 capturing participant contributions, technical/general debates, numbers, and decisions.",
-    "Detailed discussion topic 2...",
-    "Detailed discussion topic 3..."
+    "Detailed point 1: Who discussed what, what was the outcome or status update",
+    "Detailed point 2...",
+    "..."
   ],
   "decisions": [
-    "Explicit decision 1 with agreed conditions and participant alignment",
-    "Explicit decision 2..."
+    "Decision 1 — who decided what and any agreed conditions",
+    "..."
   ],
   "actionItems": [
     {
-      "task": "Exhaustive, clear task description in professional English (e.g., 'Deploy invess process on iOS', 'Create 25 test emails in Beeline and submit for QA testing', 'Submit LJE Sports website testing report before 3-day holiday', 'Upload meeting audio to Google Gemini and compare output with OpenAI & Groq')",
-      "owner": "Exact name from official verified attendees list",
-      "deadline": "Target deadline or date mentioned (or TBD / Before holidays / Monday)",
+      "task": "Specific, clear task description (1 task per item, not compound)",
+      "owner": "Exact name from: ${participantsList} — or 'Team' if shared",
+      "deadline": "Specific date or timeframe mentioned, or 'TBD'",
       "priority": "High | Medium | Low"
     }
   ],
-  "pendingItems": [
-    "Unanswered question, open debate point, or topic requiring follow-up verification"
-  ],
-  "risks": [
-    "Identified risk, blocker, timeline delay, or dependency"
-  ],
-  "nextSteps": [
-    "Immediate operational next step / upcoming to-do (e.g. Monday client feedback, model accuracy comparison)"
-  ],
-  "nextMeeting": {
-    "date": "YYYY-MM-DD or empty string",
-    "time": "HH:MM AM/PM or empty string"
-  },
-  "conclusion": "Detailed closing statement summarizing achievements, team alignment, and momentum."
-}
-`;
+  "pendingItems": ["Open question or unresolved topic from the meeting"],
+  "risks": ["Risk, blocker, or dependency that could delay work"],
+  "nextSteps": ["Immediate follow-up action or upcoming milestone"],
+  "nextMeeting": { "date": "", "time": "" },
+  "conclusion": "Closing summary: what was achieved, alignment reached, and momentum going forward"
+}`;
 
-    const userPrompt = `
-Official Verified Attendees: ${participantsList}
-${historyContextBlock}
+    const userPrompt = `VERIFIED MEETING PARTICIPANTS: ${participantsList}
+${historyBlock}
+FULL MEETING TRANSCRIPT (extract all information from this):
+---
+${rawTranscript}
+---
 
-Full Meeting Spoken Transcript to Analyze:
-${rawTranscript || 'No transcript text available.'}
-
-Base your entire analysis, summary, discussion points, and action items EXCLUSIVELY on what was spoken in the transcript above. Do not assume or invent anything from the meeting title or creation form.
-`;
+IMPORTANT: Base your MOM exclusively on the transcript above. Do not use the meeting title "${meetingData.title || ''}" to infer topics — the title may be unrelated to what was actually discussed.`;
 
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.15,
+      model: 'gpt-4o',           // Upgraded from gpt-4o-mini for accurate instruction following
+      temperature: 0.1,          // Very low temperature for factual, consistent output
       max_tokens: 4096,
       response_format: { type: 'json_object' },
       messages: [
@@ -146,23 +130,31 @@ Base your entire analysis, summary, discussion points, and action items EXCLUSIV
     });
 
     const content = response.choices[0].message.content;
-    const parsed = JSON.parse(content);
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (e) {
+      console.error('[AI] Failed to parse GPT response as JSON:', e.message);
+      return this._emptyMOM('AI response could not be parsed. Please reprocess.');
+    }
+
     const usage = response.usage || {};
 
-    // Helper: Normalize any owner name against official attendee list
+    // Normalize owner names against official participant list
     const officialNames = Array.isArray(meetingData.participants) ? meetingData.participants : [];
     const normalizeName = (name) => {
-      if (!name || name.trim().length === 0) return 'Unassigned';
+      if (!name || name.trim().length === 0) return 'Team';
       const clean = name.trim().toLowerCase();
+      if (clean === 'team' || clean === 'all' || clean === 'everyone') return 'Team';
       for (const official of officialNames) {
-        if (official.toLowerCase() === clean) return official;
-        // Phonetic / fuzzy match (e.g. "jai" -> "Jay", "harmish" -> "Harmish", "priyanka" -> "Priyanka")
+        const offLower = official.toLowerCase();
         if (
-          clean.includes(official.toLowerCase()) ||
-          official.toLowerCase().includes(clean) ||
-          clean.replace(/i/g, 'y') === official.toLowerCase().replace(/i/g, 'y') ||
-          clean.replace(/ee/g, 'i') === official.toLowerCase().replace(/ee/g, 'i') ||
-          clean.replace(/sh/g, 's') === official.toLowerCase().replace(/sh/g, 's')
+          clean === offLower ||
+          clean.includes(offLower) ||
+          offLower.includes(clean) ||
+          // Fuzzy: "harmish" matches "Harmish Sejpal"
+          offLower.split(' ')[0] === clean ||
+          clean.split(' ')[0] === offLower.split(' ')[0]
         ) {
           return official;
         }
@@ -173,18 +165,14 @@ Base your entire analysis, summary, discussion points, and action items EXCLUSIV
     return {
       meetingSummary: parsed.meetingSummary || '',
       agenda: Array.isArray(parsed.agenda) ? parsed.agenda : [],
-      keyDiscussionPoints: Array.isArray(parsed.keyDiscussionPoints)
-        ? parsed.keyDiscussionPoints
-        : [],
+      keyDiscussionPoints: Array.isArray(parsed.keyDiscussionPoints) ? parsed.keyDiscussionPoints : [],
       decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
       actionItems: Array.isArray(parsed.actionItems)
         ? parsed.actionItems.map((item) => ({
             task: item.task || '',
             owner: normalizeName(item.owner),
-            deadline: item.deadline || '',
-            priority: ['High', 'Medium', 'Low'].includes(item.priority)
-              ? item.priority
-              : 'Medium',
+            deadline: item.deadline || 'TBD',
+            priority: ['High', 'Medium', 'Low'].includes(item.priority) ? item.priority : 'Medium',
           }))
         : [],
       pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
@@ -200,6 +188,22 @@ Base your entire analysis, summary, discussion points, and action items EXCLUSIV
         completionTokens: usage.completion_tokens || 0,
         totalTokens: usage.total_tokens || 0,
       },
+    };
+  }
+
+  _emptyMOM(reason) {
+    return {
+      meetingSummary: reason,
+      agenda: [],
+      keyDiscussionPoints: [],
+      decisions: [],
+      actionItems: [],
+      pendingItems: [],
+      risks: [],
+      nextSteps: [],
+      nextMeeting: { date: '', time: '' },
+      conclusion: '',
+      tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     };
   }
 }
