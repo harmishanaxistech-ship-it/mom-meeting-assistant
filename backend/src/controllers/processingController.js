@@ -262,11 +262,36 @@ const processMeeting = async (req, res, next) => {
         job.progressPercent = 90;
         await job.save();
 
-        await MOM.findOneAndUpdate(
+        const savedMOM = await MOM.findOneAndUpdate(
           { meetingId: meeting._id },
           { meetingId: meeting._id, ...momData, language: 'en' },
-          { upsert: true }
+          { upsert: true, returnDocument: 'after' }
         );
+
+        // Automatically pre-generate the English PDF document
+        try {
+          const documentService = require('../services/document/DocumentService');
+          const Document = require('../models/Document');
+          const pdfResult = await documentService.generatePDF(meeting, savedMOM, 'en');
+          await Document.findOneAndUpdate(
+            { meetingId: meeting._id, format: 'pdf' },
+            {
+              meetingId: meeting._id,
+              momId: savedMOM._id,
+              format: 'pdf',
+              language: 'en',
+              filePath: pdfResult.filePath,
+              fileName: pdfResult.fileName,
+              fileSize: pdfResult.fileSize,
+              mimeType: 'application/pdf',
+              updatedAt: new Date(),
+            },
+            { upsert: true }
+          );
+          console.log(`[Process] Pre-generated PDF for meeting ${meeting._id}`);
+        } catch (pdfErr) {
+          console.error(`[Process] Failed to auto-generate PDF for meeting ${meeting._id}:`, pdfErr.message);
+        }
 
         // Stage 4: Complete
         job.stages.aiAnalysis = { completed: true, completedAt: new Date() };
