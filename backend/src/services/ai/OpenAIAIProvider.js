@@ -99,7 +99,7 @@ Do NOT compress or generalize specific facts into vague high-level statements. E
    - Capture specific communication channels, software platforms, VoIP tools, hardware setups, messaging apps, and integration tools agreed upon.
 
 RULE 9 — FORMAT OF KEY DISCUSSION POINTS:
-In "keyDiscussionPoints", provide rich, comprehensive multi-sentence bullet points formatted with a category heading prefix (`Topic Category: Detailed explanation...`). Do NOT return brief, vague phrases. Every point must include the concrete facts, numbers, tools, constraints, or decisions discussed in that area.
+In "keyDiscussionPoints", provide rich, comprehensive multi-sentence bullet points formatted with a category heading prefix ('Topic Category: Detailed explanation...'). Do NOT return brief, vague phrases. Every point must include the concrete facts, numbers, tools, constraints, or decisions discussed in that area.
 
 RULE 10 — ACTION ITEMS & INDIVIDUAL ACCOUNTABILITY:
 Every action item must be concrete, unambiguous, and assigned to the specific participant who agreed to it, was designated, or is responsible for that domain. If a task was agreed collectively, assign to "Team". Always specify deadlines if mentioned or inferable from timelines discussed.
