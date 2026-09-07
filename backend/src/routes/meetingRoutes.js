@@ -87,6 +87,9 @@ router.put('/:id/mom', async (req, res, next) => {
       keyDiscussionPoints,
       decisions,
       actionItems,
+      pendingItems,
+      risks,
+      nextSteps,
       conclusion,
       language = 'en',
     } = req.body;
@@ -101,6 +104,9 @@ router.put('/:id/mom', async (req, res, next) => {
     if (keyDiscussionPoints !== undefined) mom.keyDiscussionPoints = keyDiscussionPoints;
     if (decisions !== undefined) mom.decisions = decisions;
     if (actionItems !== undefined) mom.actionItems = actionItems;
+    if (pendingItems !== undefined) mom.pendingItems = pendingItems;
+    if (risks !== undefined) mom.risks = risks;
+    if (nextSteps !== undefined) mom.nextSteps = nextSteps;
     if (conclusion !== undefined) mom.conclusion = conclusion;
     mom.isEditedByUser = true;
 
