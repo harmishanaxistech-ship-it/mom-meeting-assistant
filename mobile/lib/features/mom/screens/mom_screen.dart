@@ -269,34 +269,172 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     }
   }
 
-  Future<bool> _confirmDelete(String itemTitle) async {
+  Future<bool> _confirmDelete(String itemTitle, {String? previewText}) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
-            SizedBox(width: 8),
-            Text('Confirm Delete', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 380),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withAlpha(30),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header Badge with soft red ring
+              Padding(
+                padding: const EdgeInsets.only(top: 28, bottom: 12),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFFECACA), width: 3),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.delete_forever_rounded,
+                      size: 32,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'Delete ${itemTitle.split(' ').map((s) => s.isNotEmpty ? '${s[0].toUpperCase()}${s.substring(1)}' : '').join(' ')}?',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Subtitle
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'This action will remove the $itemTitle from this meeting\'s MOM.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+
+              // Optional Preview snippet of the item being deleted
+              if (previewText != null && previewText.trim().isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.format_quote_rounded, size: 16, color: Color(0xFF94A3B8)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          previewText.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontStyle: FontStyle.italic,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Action Buttons Row
+              Padding(
+                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+                child: Row(
+                  children: [
+                    // Cancel button
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Delete button with gradient or bold red
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: const Color(0xFFDC2626),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text(
+                          'Delete',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        content: Text('Are you sure you want to delete this $itemTitle?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
     return result ?? false;
@@ -704,7 +842,10 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                                         icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
                                         tooltip: 'Delete Action Item',
                                         onPressed: () async {
-                                          final confirmed = await _confirmDelete('action item');
+                                          final confirmed = await _confirmDelete(
+                                            'action item',
+                                            previewText: item['task'] as String?,
+                                          );
                                           if (confirmed && mounted) {
                                             setState(() {
                                               _actionItems.removeAt(i);
@@ -976,7 +1117,10 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
             icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
             tooltip: 'Delete $itemType',
             onPressed: () async {
-              final confirmed = await _confirmDelete(itemType);
+              final confirmed = await _confirmDelete(
+                itemType,
+                previewText: controllers[i].text,
+              );
               if (confirmed && mounted) {
                 setState(() {
                   controllers.removeAt(i);
