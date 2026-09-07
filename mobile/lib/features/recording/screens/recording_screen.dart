@@ -146,25 +146,13 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
 
   Future<void> _pickAudioFile() async {
     try {
-      FilePickerResult? result;
-
-      // Primary attempt: custom audio extensions
-      try {
-        result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'mp4', 'opus', 'wma', 'amr'],
-        );
-      } catch (e1) {
-        debugPrint('Custom file picker failed: $e1. Trying FileType.audio...');
-        try {
-          // Fallback 1: Native audio category
-          result = await FilePicker.platform.pickFiles(type: FileType.audio);
-        } catch (e2) {
-          debugPrint('Audio file picker failed: $e2. Trying FileType.any...');
-          // Fallback 2: Any file
-          result = await FilePicker.platform.pickFiles(type: FileType.any);
-        }
-      }
+      // NOTE: We use FileType.any because Android/iOS system file pickers frequently
+      // gray out / disable .m4a and .aac files when FileType.custom or FileType.audio is used,
+      // due to Android OS MIME-type mismatch (audio/mp4 vs audio/x-m4a vs video/mp4).
+      // FileType.any enables ALL files to be tapped and selectable, and we validate the extension below.
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+      );
 
       if (result == null || result.files.isEmpty) {
         // User dismissed the picker without choosing
