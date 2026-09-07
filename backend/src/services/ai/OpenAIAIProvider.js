@@ -83,39 +83,26 @@ RULE 7 — PROFESSIONAL OUTPUT QUALITY & EXECUTIVE SUMMARY PARAGRAPHING:
   * Paragraph 2 (Key Discussions & Operational Updates): In-depth breakdown of status reports, system updates, workflows, and specifics discussed.
   * Paragraph 3 (Strategic Decisions & Agreements): Key conclusions, approvals, team commitments, and agreed deliverables.
 
-RULE 8 — EXHAUSTIVE LOGISTICAL, OPERATIONAL & TECHNICAL SPECIFICITY:
-Do NOT compress or generalize specific facts into vague high-level statements. You must extract all granular operational details into distinct, rich points:
-1. Exact Dates & Rescheduling:
-   - Understand multilingual and phonetic patterns: e.g., 'ognis' / '90s' / 'engagement' / '19 day' in the context of dates refers to the 19th of the month.
-   - Accurately record travel departure dates: Travel begins on the 19th from India to Singapore (trip duration September 19th to 25th).
-   - Rescheduling: All client meetings originally set for September 19th must be rescheduled to September 20th onwards (September 20th–25th), and clients must be updated accordingly.
-2. Client & Target Audience Criteria:
-   - Headcount requirements: Target companies with an employee headcount of 11 or more. Explicitly avoid self-employed individuals or companies with fewer than 10 employees.
-   - Target industries: List all specific sectors discussed: Manufacturing, Transportation, Solar Energy, and Bakeries.
-3. Travel Logistics & Transit Lessons Learned:
-   - Note lessons from previous trips (e.g., Dubai trip transit issues and excessive distance between meeting locations).
-   - Mode of transport: Public transport (Singapore Metro) is strongly preferred over cabs to save time and avoid transit delays.
-   - Geographical grouping: Meeting itineraries must be geographically clustered day-wise to ensure smooth transit between meetings.
-4. Portfolio, Events & Products to Pitch:
-   - Events: Singapore Expo on September 24th, where the team is scheduled to meet a key contact and explore client opportunities.
-   - Products & solutions to highlight: AI agents, AI chatbots, Attendance applications, Transport / Export-Import apps, and the MOM (Minutes of Meeting) project.
-5. Communication Setup:
-   - International communication while traveling will be handled using VoIP services (Vyke/Action app with a €10 monthly auto-recharge balance), Microsoft Teams, iOS FaceTime, Wi-Fi calling, and WhatsApp messaging.
+RULE 8 — EXHAUSTIVE LOGISTICAL, OPERATIONAL & FACTUAL SPECIFICITY:
+Do NOT compress or generalize specific facts into vague high-level statements. Extract ALL granular details, figures, names, and operational specifics mentioned in the transcript:
+1. Dates, Deadlines & Timeline Adjustments:
+   - Understand multilingual and phonetic speech variations (e.g., in Indian/regional speech, dates like '19th' may sound like 'ognis', '90s', 'engagement', or '19 day'). Reconstruct the true dates from context.
+   - Record exact dates, milestones, travel schedules, departures, and any shifting or rescheduling of commitments.
+2. Metrics, Criteria, Numbers & Qualifications:
+   - Capture exact figures and thresholds discussed (e.g., headcount requirements such as 11+ employees, budgets, revenue, percentages, quantities, balances like €10).
+   - Specify target criteria, excluded categories, and target market segments or industries.
+3. Logistics, Operations & Decisions:
+   - Detail operational workflows, lessons learned from past projects/trips, transportation choices (e.g., transit modes, route grouping), and procedural steps.
+4. Products, Services, Tech Stack & Deliverables:
+   - List every specific product, software, feature, application, or system named in the discussion (e.g., AI agents, chatbots, mobile apps, specialized platforms).
+5. Communication, Tools & Infrastructure:
+   - Capture specific communication channels, software platforms, VoIP tools, hardware setups, messaging apps, and integration tools agreed upon.
 
 RULE 9 — FORMAT OF KEY DISCUSSION POINTS:
-In "keyDiscussionPoints", provide rich, comprehensive multi-sentence bullet points formatted with a category heading prefix. Do not shorten them into brief phrases. Every point should be thorough:
-- "Schedule Adjustment: The travel dates for the client visit to Singapore are scheduled from the 19th to the 25th, but travel begins on the 19th from India. Meetings originally set for September 19th need to be rescheduled to September 20th onwards. Clients should be updated accordingly."
-- "Target Audience Criteria: Target companies with an employee headcount of 11 or more (avoid self-employed individuals or companies with fewer than 10 employees). Target industries include manufacturing, transportation, solar energy, and bakeries."
-- "Logistics & Travel Logistics: Lessons from the previous Dubai trip were discussed, emphasizing the need to minimize travel distances between meeting locations and manage travel/transit times efficiently. Public transport options (like the Metro in Singapore) are preferred over cabs to save time and avoid delays. Meeting itineraries should be grouped geographically day-wise."
-- "Upcoming Events & Portfolio Highlights: An Expo is scheduled in Singapore on September 24th, where the team is set to meet a key contact. Products/Services to highlight to clients include AI agents, AI chatbots, Attendance applications, transport/export-import apps, and the MOM project."
-- "Communication Setup: International communication while traveling will be handled using existing VoIP services (e.g., Vyke/Action app with €10 monthly balance), Teams, FaceTime, and Wi-Fi calling, alongside direct WhatsApp messaging."
+In "keyDiscussionPoints", provide rich, comprehensive multi-sentence bullet points formatted with a category heading prefix (`Topic Category: Detailed explanation...`). Do NOT return brief, vague phrases. Every point must include the concrete facts, numbers, tools, constraints, or decisions discussed in that area.
 
-RULE 10 — ACTION ITEMS ACCOUNTABILITY:
-Every action item must be actionable and assigned to the specific person(s) who spoke or was designated:
-- Rescheduling September 19th meetings to 20th–25th → assign to Mittal & Priyanshi (or Priyanshi / Mittal)
-- Geographical grouping and Singapore Metro transit planning → assign to Vijay Panchal (or Vijay Panchal & Team)
-- Targeting 11+ headcount companies in manufacturing, transportation, solar, and bakery → assign to Dharmesh Baraiya
-- Testing & setting up VoIP Vyke (€10 balance), Teams, FaceTime, and WhatsApp communication → assign to Harmish Sachpara (or Harmish & Team)
+RULE 10 — ACTION ITEMS & INDIVIDUAL ACCOUNTABILITY:
+Every action item must be concrete, unambiguous, and assigned to the specific participant who agreed to it, was designated, or is responsible for that domain. If a task was agreed collectively, assign to "Team". Always specify deadlines if mentioned or inferable from timelines discussed.
 
 Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
 

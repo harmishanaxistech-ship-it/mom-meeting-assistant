@@ -122,11 +122,18 @@ class OpenAISpeechToTextProvider extends SpeechToTextProvider {
         : 'Priyanka, Harmish, Vijay, Jay';
 
     // IMPORTANT: Whisper prompt must NOT end with a complete sentence.
-    // If it ends with a complete sentence (e.g., "Spoken in a mix of English, Gujarati, and Hindi.")
-    // Whisper will hallucinate by echoing that sentence back when audio is unclear.
-    // Always end the prompt mid-phrase or with a comma-terminated list of keywords.
-    // Enhanced prompt keywords for business meetings with Indian accents / regional speech
-    const whisperPrompt = `Indian business meeting in English, Gujarati, and Hindi. Participants: ${participantsList}. Topics: business expansion, client meetings, scheduling, travel logistics, flights, dates 19th 20th 21st 22nd 23rd 24th 25th September, expo, target audience companies with 11+ headcount, transport, metro vs cabs, VoIP communication, Vyke, Teams, WhatsApp,`;
+    // Whisper uses prompt tokens to prime its vocabulary, phonetics, and domain context.
+    // Build dynamically from the meeting's title, agenda, and participants to support any meeting topic.
+    const meetingContextParts = [];
+    if (options.title && options.title.trim().length > 0) {
+      meetingContextParts.push(`Meeting: ${options.title.trim()}`);
+    }
+    if (Array.isArray(options.agenda) && options.agenda.length > 0) {
+      meetingContextParts.push(`Agenda: ${options.agenda.slice(0, 5).join(', ')}`);
+    }
+    const dynamicContext = meetingContextParts.length > 0 ? meetingContextParts.join('. ') + '. ' : '';
+
+    const whisperPrompt = `${dynamicContext}Multilingual business discussion, English, Hindi, regional Indian languages. Participants: ${participantsList}. Topics: project updates, schedules, deliverables, operational reviews, action items, dates, metrics, software, tools,`;
 
     // 1. Try Groq Whisper-Large-V3 first if Groq API Key is available
     // Groq whisper-large-v3 translations converts Gujarati/Hindi speech directly to rich English transcript
