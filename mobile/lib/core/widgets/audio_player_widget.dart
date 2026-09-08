@@ -6,11 +6,13 @@ import '../../../core/theme/app_theme.dart';
 class AudioPlayerWidget extends StatefulWidget {
   final String audioUrl;
   final String title;
+  final bool isDarkTheme;
 
   const AudioPlayerWidget({
     super.key,
     required this.audioUrl,
     required this.title,
+    this.isDarkTheme = false,
   });
 
   @override
@@ -67,19 +69,28 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = widget.isDarkTheme;
+    final primaryAccent = isDark ? const Color(0xFF38BDF8) : AppTheme.primaryColor;
+    final textTitleColor = isDark ? Colors.white : AppTheme.textPrimary;
+    final textSubColor = isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary;
+    final cardBg = isDark ? Colors.white.withAlpha(12) : Colors.white;
+    final cardBorder = isDark ? Colors.white.withAlpha(25) : const Color(0xFFE2E8F0);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(8),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: cardBorder),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withAlpha(8),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,22 +100,24 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withAlpha(20),
+                  color: primaryAccent.withAlpha(isDark ? 35 : 20),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.audiotrack, color: AppTheme.primaryColor, size: 20),
+                child: Icon(Icons.audiotrack_rounded, color: primaryAccent, size: 20),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Meeting Audio Recording',
+                    Text(
+                      widget.title.isNotEmpty ? widget.title : 'Audio Player',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: AppTheme.textPrimary,
+                        color: textTitleColor,
                       ),
                     ),
                     StreamBuilder<Duration?>(
@@ -113,17 +126,17 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                         final duration = snapshot.data ?? _player.duration;
                         if (duration != null && duration.inSeconds > 0) {
                           return Text(
-                            'Total Duration: ${_formatDuration(duration)}',
-                            style: const TextStyle(
+                            'Duration: ${_formatDuration(duration)}',
+                            style: TextStyle(
                               fontSize: 12,
-                              color: AppTheme.textSecondary,
+                              color: textSubColor,
                               fontWeight: FontWeight.w500,
                             ),
                           );
                         }
-                        return const Text(
+                        return Text(
                           'Ready to play',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          style: TextStyle(fontSize: 12, color: textSubColor),
                         );
                       },
                     ),
@@ -139,7 +152,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, size: 16, color: Colors.orange),
+                  const Icon(Icons.error_outline_rounded, size: 16, color: Colors.orange),
                   const SizedBox(width: 6),
                   Text(
                     _errorMessage!,
@@ -165,16 +178,16 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                   progress: position,
                   total: duration,
                   buffered: _player.bufferedPosition,
-                  progressBarColor: AppTheme.primaryColor,
-                  baseBarColor: const Color(0xFFE2E8F0),
-                  bufferedBarColor: const Color(0xFFCBD5E1),
-                  thumbColor: AppTheme.primaryColor,
+                  progressBarColor: primaryAccent,
+                  baseBarColor: isDark ? Colors.white.withAlpha(25) : const Color(0xFFE2E8F0),
+                  bufferedBarColor: isDark ? Colors.white.withAlpha(45) : const Color(0xFFCBD5E1),
+                  thumbColor: primaryAccent,
                   thumbRadius: 7.0,
                   timeLabelLocation: TimeLabelLocation.sides,
-                  timeLabelTextStyle: const TextStyle(
+                  timeLabelTextStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
+                    color: textSubColor,
                   ),
                   onSeek: (duration) {
                     _player.seek(duration);
@@ -194,12 +207,12 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                     final newPos = _player.position - const Duration(seconds: 10);
                     _player.seek(newPos < Duration.zero ? Duration.zero : newPos);
                   },
-                  icon: const Icon(Icons.replay_10),
+                  icon: const Icon(Icons.replay_10_rounded),
                   iconSize: 24,
-                  color: AppTheme.textSecondary,
+                  color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary,
                   tooltip: 'Rewind 10s',
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
 
                 // Play / Pause Button
                 StreamBuilder<PlayerState>(
@@ -213,44 +226,68 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                         processingState == ProcessingState.loading ||
                         processingState == ProcessingState.buffering) {
                       return Container(
-                        width: 46,
-                        height: 46,
-                        padding: const EdgeInsets.all(10),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.primaryColor,
+                        width: 48,
+                        height: 48,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: primaryAccent,
                           shape: BoxShape.circle,
                         ),
-                        child: const CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: Colors.white,
+                          color: isDark ? const Color(0xFF0F172A) : Colors.white,
                         ),
                       );
                     } else if (playing != true) {
-                      return IconButton.filled(
-                        onPressed: _player.play,
-                        iconSize: 28,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(12),
+                      return Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: primaryAccent.withAlpha(isDark ? 80 : 50),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        icon: const Icon(Icons.play_arrow),
+                        child: IconButton.filled(
+                          onPressed: _player.play,
+                          iconSize: 28,
+                          style: IconButton.styleFrom(
+                            backgroundColor: primaryAccent,
+                            foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                            padding: const EdgeInsets.all(12),
+                          ),
+                          icon: const Icon(Icons.play_arrow_rounded),
+                        ),
                       );
                     } else {
-                      return IconButton.filled(
-                        onPressed: _player.pause,
-                        iconSize: 28,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(12),
+                      return Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: primaryAccent.withAlpha(isDark ? 80 : 50),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        icon: const Icon(Icons.pause),
+                        child: IconButton.filled(
+                          onPressed: _player.pause,
+                          iconSize: 28,
+                          style: IconButton.styleFrom(
+                            backgroundColor: primaryAccent,
+                            foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                            padding: const EdgeInsets.all(12),
+                          ),
+                          icon: const Icon(Icons.pause_rounded),
+                        ),
                       );
                     }
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
 
                 // Forward 10 seconds
                 IconButton(
@@ -259,9 +296,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                     final newPos = _player.position + const Duration(seconds: 10);
                     _player.seek(newPos > total ? total : newPos);
                   },
-                  icon: const Icon(Icons.forward_10),
+                  icon: const Icon(Icons.forward_10_rounded),
                   iconSize: 24,
-                  color: AppTheme.textSecondary,
+                  color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary,
                   tooltip: 'Forward 10s',
                 ),
               ],

@@ -31,6 +31,13 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
   List<TextEditingController> _nextStepsControllers = [];
   List<TextEditingController> _pendingItemsControllers = [];
   List<TextEditingController> _risksControllers = [];
+  List<TextEditingController> _otherNotesControllers = [];
+  bool _isInformalExpanded = false;
+
+  // 1-2 min Spoken Audio Summary State
+  bool _isGeneratingAudioSummary = false;
+  String _audioSummaryLanguage = 'en';
+  Map<String, dynamic>? _currentAudioSummary;
 
   List<Map<String, dynamic>> _actionItems = [];
 
@@ -61,6 +68,9 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     for (var c in _risksControllers) {
       c.dispose();
     }
+    for (var c in _otherNotesControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -79,9 +89,12 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
         }
         if (mom != null && mounted) {
           _populateControllers(mom);
+          final audioSummaries = mom['audioSummaries'] as Map<String, dynamic>?;
+          final cachedAudio = audioSummaries?[_audioSummaryLanguage] as Map<String, dynamic>?;
           setState(() {
             _mom = mom;
             _selectedLanguage = mom['language'] ?? 'en';
+            _currentAudioSummary = cachedAudio;
             _isLoading = false;
           });
           return;
@@ -90,6 +103,69 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       if (mounted) setState(() => _isLoading = false);
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchOrGenerateAudioSummary(String lang, {bool forceRegenerate = false}) async {
+    // 1. Check local cache in _mom if not force regenerating
+    if (!forceRegenerate) {
+      final audioSummaries = _mom?['audioSummaries'] as Map<String, dynamic>?;
+      if (audioSummaries != null && audioSummaries[lang] != null) {
+        setState(() {
+          _audioSummaryLanguage = lang;
+          _currentAudioSummary = Map<String, dynamic>.from(audioSummaries[lang]);
+        });
+        return;
+      }
+    }
+
+    // 2. Request backend generation
+    setState(() {
+      _audioSummaryLanguage = lang;
+      _isGeneratingAudioSummary = true;
+    });
+
+    try {
+      final client = ApiClient();
+      final res = await client.dio.post(
+        '${ApiConstants.meetings}/${widget.meetingId}/audio-summary',
+        data: {
+          'language': lang,
+          'forceRegenerate': forceRegenerate,
+        },
+      );
+
+      if (res.data['success'] == true && mounted) {
+        final audioData = res.data['data'] as Map<String, dynamic>;
+        if (_mom != null) {
+          _mom!['audioSummaries'] ??= <String, dynamic>{};
+          _mom!['audioSummaries'][lang] = audioData;
+        }
+        setState(() {
+          _currentAudioSummary = audioData;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${lang == 'gu' ? 'Gujarati' : lang == 'hi' ? 'Hindi' : 'English'} voice briefing updated!',
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate audio summary: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGeneratingAudioSummary = false);
     }
   }
 
@@ -111,6 +187,9 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       c.dispose();
     }
     for (var c in _risksControllers) {
+      c.dispose();
+    }
+    for (var c in _otherNotesControllers) {
       c.dispose();
     }
 
@@ -155,6 +234,13 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
         _risksControllers.add(TextEditingController(text: r.toString()));
       }
     }
+
+    _otherNotesControllers = [];
+    if (mom['otherNotes'] != null) {
+      for (var n in mom['otherNotes']) {
+        _otherNotesControllers.add(TextEditingController(text: n.toString()));
+      }
+    }
   }
 
   Future<void> _saveChanges() async {
@@ -170,6 +256,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
         'nextSteps': _nextStepsControllers.map((c) => c.text).where((t) => t.trim().isNotEmpty).toList(),
         'pendingItems': _pendingItemsControllers.map((c) => c.text).where((t) => t.trim().isNotEmpty).toList(),
         'risks': _risksControllers.map((c) => c.text).where((t) => t.trim().isNotEmpty).toList(),
+        'otherNotes': _otherNotesControllers.map((c) => c.text).where((t) => t.trim().isNotEmpty).toList(),
       };
 
       final res = await client.dio.put(
@@ -187,6 +274,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
           _mom!['nextSteps'] = updatedMom['nextSteps'];
           _mom!['pendingItems'] = updatedMom['pendingItems'];
           _mom!['risks'] = updatedMom['risks'];
+          _mom!['otherNotes'] = updatedMom['otherNotes'];
           _mom!['translations'] = {}; // Cleared on edit
         }
         ScaffoldMessenger.of(context).showSnackBar(
@@ -608,140 +696,174 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text(
-          _meetingTitle,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        backgroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _meetingTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const Text(
+              'Minutes of Meeting Studio',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
         ),
         actions: [
           if (!_isLoading)
-            IconButton(
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(color: AppTheme.primaryColor, strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined),
-              tooltip: 'Save Edits',
-              onPressed: _isSaving ? null : _saveChanges,
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: IconButton(
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(color: AppTheme.primaryColor, strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_rounded, color: AppTheme.primaryColor, size: 20),
+                tooltip: 'Save Edits',
+                onPressed: _isSaving ? null : _saveChanges,
+              ),
             ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            tooltip: 'Export & Share PDF/Docx',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ExportDocumentScreen(
-                    meetingId: widget.meetingId,
-                    meetingTitle: _meetingTitle,
-                  ),
+          const SizedBox(width: 8),
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2563EB).withAlpha(40),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
-              );
-            },
+              ],
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.share_outlined, color: Colors.white, size: 19),
+              tooltip: 'Export & Share PDF/Docx',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ExportDocumentScreen(
+                      meetingId: widget.meetingId,
+                      meetingTitle: _meetingTitle,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(8),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const CircularProgressIndicator(
+                      color: AppTheme.primaryColor,
+                      strokeWidth: 3,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Loading Meeting Insights...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            )
           : Stack(
               children: [
                 SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Meeting Header Banner Card
+                      _buildMeetingHeroCard(),
+                      const SizedBox(height: 14),
+
                       // Embedded Meeting Audio Player
                       if (_audioFileName != null && _audioFileName!.isNotEmpty) ...[
                         AudioPlayerWidget(
                           audioUrl: '${ApiConstants.serverBaseUrl}/uploads/$_audioFileName',
                           title: _meetingTitle,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                       ],
 
+                      // 1-2 Min Executive Voice Briefing Card
+                      _buildVoiceBriefingCard(),
+                      const SizedBox(height: 14),
+
                       // Language Selector Bar
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(5),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.translate, size: 18, color: AppTheme.primaryColor),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'MOM Language (Multilingual Support):',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
-                                const Spacer(),
-                                if (_isTranslating)
-                                  Row(
-                                    children: const [
-                                      SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'Translating...',
-                                        style: TextStyle(fontSize: 12, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: SegmentedButton<String>(
-                                emptySelectionAllowed: false,
-                                multiSelectionEnabled: false,
-                                segments: const [
-                                  ButtonSegment(value: 'en', label: Text('English')),
-                                  ButtonSegment(value: 'hi', label: Text('Hindi')),
-                                  ButtonSegment(value: 'gu', label: Text('Gujarati')),
-                                ],
-                                selected: {_selectedLanguage},
-                                onSelectionChanged: _isTranslating
-                                    ? null
-                                    : (set) {
-                                        if (set.isNotEmpty) _changeLanguage(set.first);
-                                      },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildLanguageSelectorBar(),
                       const SizedBox(height: 20),
 
                       // 1. Executive Summary Card (Editable)
                       _buildSectionHeader(
-                        icon: Icons.summarize_outlined,
+                        icon: Icons.auto_awesome_rounded,
                         title: '1. Executive Summary',
+                        badgeColor: const Color(0xFF3B82F6),
                       ),
                       _buildEditableCard(
                         controller: _summaryController,
                         hint: 'Detailed executive summary...',
+                        accentColor: const Color(0xFF3B82F6),
                       ),
                       const SizedBox(height: 20),
 
                       // 2. Key Discussion Points (Editable)
                       _buildSectionHeader(
-                        icon: Icons.forum_outlined,
+                        icon: Icons.forum_rounded,
                         title: '2. Key Discussion Points',
+                        badgeColor: const Color(0xFF0284C7),
+                        count: _discussionControllers.length,
                         onAdd: () => _addNewItem(_discussionControllers, 'Discussion Point'),
                       ),
                       if (_discussionControllers.isEmpty)
@@ -749,16 +871,18 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       else
                         _buildEditableList(
                           controllers: _discussionControllers,
-                          icon: Icons.chat_bubble_outline,
-                          color: AppTheme.primaryColor,
+                          icon: Icons.chat_bubble_outline_rounded,
+                          color: const Color(0xFF0284C7),
                           itemType: 'discussion point',
                         ),
                       const SizedBox(height: 20),
 
                       // 3. Decisions Taken (Editable)
                       _buildSectionHeader(
-                        icon: Icons.gavel_outlined,
+                        icon: Icons.gavel_rounded,
                         title: '3. Decisions Taken',
+                        badgeColor: const Color(0xFF059669),
+                        count: _decisionControllers.length,
                         onAdd: () => _addNewItem(_decisionControllers, 'Decision'),
                       ),
                       if (_decisionControllers.isEmpty)
@@ -766,16 +890,18 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       else
                         _buildEditableList(
                           controllers: _decisionControllers,
-                          icon: Icons.check_circle_outline,
-                          color: const Color(0xFF10B981),
+                          icon: Icons.check_circle_outline_rounded,
+                          color: const Color(0xFF059669),
                           itemType: 'decision',
                         ),
                       const SizedBox(height: 20),
 
                       // 4. Action Items & Assignments
                       _buildSectionHeader(
-                        icon: Icons.task_alt_outlined,
+                        icon: Icons.task_alt_rounded,
                         title: '4. Action Items & Assignments',
+                        badgeColor: const Color(0xFFD97706),
+                        count: _actionItems.length,
                         onAdd: () => _showActionItemDialog(),
                       ),
                       if (_actionItems.isEmpty)
@@ -787,135 +913,188 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                           itemCount: _actionItems.length,
                           itemBuilder: (ctx, i) {
                             final item = _actionItems[i];
-                            final isHigh = item['priority'] == 'High' || item['priority'] == 'उच्च' || item['priority'] == 'ઉચ્ચ';
+                            final priorityStr = (item['priority'] ?? 'Medium').toString().toLowerCase();
+                            final isHigh = priorityStr.contains('high') || priorityStr.contains('उच्च') || priorityStr.contains('ઉચ્ચ');
+                            final isLow = priorityStr.contains('low') || priorityStr.contains('निम्न') || priorityStr.contains('ઓછી');
+
+                            final badgeBg = isHigh
+                                ? const Color(0xFFFEE2E2)
+                                : isLow
+                                    ? const Color(0xFFDCFCE7)
+                                    : const Color(0xFFFEF3C7);
+                            final badgeFg = isHigh
+                                ? const Color(0xFFDC2626)
+                                : isLow
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFD97706);
+                            final leftStripeColor = isHigh
+                                ? const Color(0xFFEF4444)
+                                : isLow
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFFF59E0B);
+
                             return Container(
                               margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: const Color(0xFFE2E8F0)),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withAlpha(5),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
+                                    color: const Color(0xFF0F172A).withAlpha(8),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(color: leftStripeColor, width: 4),
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: isHigh ? const Color(0xFFFEE2E2) : const Color(0xFFE0F2FE),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Icon(
-                                          Icons.assignment_outlined,
-                                          size: 18,
-                                          color: isHigh ? Colors.red : AppTheme.primaryColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          item['task'] ?? '',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: AppTheme.textPrimary,
-                                            height: 1.4,
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(7),
+                                            decoration: BoxDecoration(
+                                              color: leftStripeColor.withAlpha(20),
+                                              borderRadius: BorderRadius.circular(9),
+                                            ),
+                                            child: Icon(
+                                              Icons.check_box_outlined,
+                                              size: 17,
+                                              color: leftStripeColor,
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF64748B)),
-                                        tooltip: 'Edit Action Item',
-                                        onPressed: () => _showActionItemDialog(existingItem: item, index: i),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-                                        tooltip: 'Delete Action Item',
-                                        onPressed: () async {
-                                          final confirmed = await _confirmDelete(
-                                            'action item',
-                                            previewText: item['task'] as String?,
-                                          );
-                                          if (confirmed && mounted) {
-                                            setState(() {
-                                              _actionItems.removeAt(i);
-                                            });
-                                          }
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      if ((item['owner'] ?? '').isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(20),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              item['task'] ?? '',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14.5,
+                                                color: Color(0xFF0F172A),
+                                                height: 1.4,
+                                                letterSpacing: -0.2,
+                                              ),
+                                            ),
                                           ),
-                                          child: Row(
+                                          Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              const Icon(Icons.person, size: 14, color: Color(0xFF475569)),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                'Owner: ${item['owner']}',
-                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                              IconButton(
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF64748B)),
+                                                tooltip: 'Edit Action Item',
+                                                onPressed: () => _showActionItemDialog(existingItem: item, index: i),
+                                              ),
+                                              IconButton(
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFFEF4444)),
+                                                tooltip: 'Delete Action Item',
+                                                onPressed: () async {
+                                                  final confirmed = await _confirmDelete(
+                                                    'action item',
+                                                    previewText: item['task'] as String?,
+                                                  );
+                                                  if (confirmed && mounted) {
+                                                    setState(() {
+                                                      _actionItems.removeAt(i);
+                                                    });
+                                                  }
+                                                },
                                               ),
                                             ],
                                           ),
-                                        ),
-                                      if ((item['deadline'] ?? '').isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFFEF3C7),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.alarm, size: 14, color: Color(0xFFB45309)),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                'Due: ${item['deadline']}',
-                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          if ((item['owner'] ?? '').isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(8),
                                               ),
-                                            ],
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.person_outline_rounded, size: 13, color: Color(0xFF475569)),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    item['owner'],
+                                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          if ((item['deadline'] ?? '').isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFEF3C7),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFFB45309)),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    item['deadline'],
+                                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: badgeBg,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 5,
+                                                  height: 5,
+                                                  decoration: BoxDecoration(
+                                                    color: badgeFg,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4.5),
+                                                Text(
+                                                  item['priority'] ?? 'Medium',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: badgeFg,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isHigh ? const Color(0xFFFEE2E2) : const Color(0xFFE0E7FF),
-                                          borderRadius: BorderRadius.circular(20),
-                                        ),
-                                        child: Text(
-                                          'Priority: ${item['priority'] ?? 'Medium'}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: isHigh ? const Color(0xFFDC2626) : const Color(0xFF4338CA),
-                                          ),
-                                        ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
+                                ),
                               ),
                             );
                           },
@@ -924,8 +1103,10 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
 
                       // 5. Next Steps & Follow-ups (Editable)
                       _buildSectionHeader(
-                        icon: Icons.trending_up_outlined,
+                        icon: Icons.trending_up_rounded,
                         title: '5. Next Steps & Upcoming To-Dos',
+                        badgeColor: const Color(0xFF6366F1),
+                        count: _nextStepsControllers.length,
                         onAdd: () => _addNewItem(_nextStepsControllers, 'Next Step'),
                       ),
                       if (_nextStepsControllers.isEmpty)
@@ -943,6 +1124,8 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       _buildSectionHeader(
                         icon: Icons.help_outline_rounded,
                         title: '6. Pending Items & Open Questions',
+                        badgeColor: const Color(0xFFEA580C),
+                        count: _pendingItemsControllers.length,
                         onAdd: () => _addNewItem(_pendingItemsControllers, 'Pending Item'),
                       ),
                       if (_pendingItemsControllers.isEmpty)
@@ -951,7 +1134,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                         _buildEditableList(
                           controllers: _pendingItemsControllers,
                           icon: Icons.question_mark_rounded,
-                          color: const Color(0xFFF59E0B),
+                          color: const Color(0xFFEA580C),
                           itemType: 'pending item',
                         ),
                       const SizedBox(height: 20),
@@ -960,6 +1143,8 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       _buildSectionHeader(
                         icon: Icons.warning_amber_rounded,
                         title: '7. Risks & Dependencies',
+                        badgeColor: const Color(0xFFDC2626),
+                        count: _risksControllers.length,
                         onAdd: () => _addNewItem(_risksControllers, 'Risk'),
                       ),
                       if (_risksControllers.isEmpty)
@@ -968,21 +1153,27 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                         _buildEditableList(
                           controllers: _risksControllers,
                           icon: Icons.error_outline_rounded,
-                          color: const Color(0xFFEF4444),
+                          color: const Color(0xFFDC2626),
                           itemType: 'risk',
                         ),
                       const SizedBox(height: 20),
 
-                      // 8. Conclusion (Editable)
+                      // 8. Informal / Side Discussions (Expandable Toggle)
+                      _buildInformalSection(),
+                      const SizedBox(height: 20),
+
+                      // 9. Conclusion (Editable)
                       _buildSectionHeader(
-                        icon: Icons.done_all,
-                        title: '8. Conclusion',
+                        icon: Icons.verified_rounded,
+                        title: '9. Conclusion & Final Note',
+                        badgeColor: const Color(0xFF0D9488),
                       ),
                       _buildEditableCard(
                         controller: _conclusionController,
                         hint: 'Detailed closing statement...',
+                        accentColor: const Color(0xFF0D9488),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 48),
                     ],
                   ),
                 ),
@@ -990,40 +1181,49 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                 // Global Translation Loader Overlay
                 if (_isTranslating)
                   Container(
-                    color: Colors.black.withAlpha(50),
+                    color: Colors.black.withAlpha(70),
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                        margin: const EdgeInsets.symmetric(horizontal: 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withAlpha(25),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
+                              color: Colors.black.withAlpha(40),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const CircularProgressIndicator(
-                              color: AppTheme.primaryColor,
-                              strokeWidth: 3,
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const CircularProgressIndicator(
+                                color: AppTheme.primaryColor,
+                                strokeWidth: 3,
+                              ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 18),
                             Text(
                               'Translating MOM to ${_selectedLanguage == 'gu' ? 'Gujarati' : _selectedLanguage == 'hi' ? 'Hindi' : 'English'}...',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 15,
                                 color: AppTheme.textPrimary,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             const Text(
-                              'Using AI translator',
+                              'Preserving context & bullet structure',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.textSecondary,
@@ -1039,9 +1239,702 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     );
   }
 
+  Widget _buildMeetingHeroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E3A8A).withAlpha(45),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(35),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.auto_awesome, size: 12, color: Color(0xFF93C5FD)),
+                    SizedBox(width: 4),
+                    Text(
+                      'AI Minutes of Meeting',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(25),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${_selectedLanguage.toUpperCase()} Mode',
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _meetingTitle,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.3,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildHeroStat(Icons.forum_outlined, '${_discussionControllers.length}', 'Points'),
+              _buildHeroDivider(),
+              _buildHeroStat(Icons.gavel_outlined, '${_decisionControllers.length}', 'Decisions'),
+              _buildHeroDivider(),
+              _buildHeroStat(Icons.task_alt_outlined, '${_actionItems.length}', 'Actions'),
+              _buildHeroDivider(),
+              _buildHeroStat(Icons.warning_amber_rounded, '${_risksControllers.length}', 'Risks'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroStat(IconData icon, String count, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(20),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 12, color: const Color(0xFF93C5FD)),
+                const SizedBox(width: 4),
+                Text(
+                  count,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 1),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFFCBD5E1),
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroDivider() {
+    return const SizedBox(width: 6);
+  }
+
+  Widget _buildVoiceBriefingCard() {
+    final langNames = {
+      'en': 'English',
+      'hi': 'Hindi',
+      'gu': 'Gujarati',
+    };
+    final currentLangLabel = langNames[_audioSummaryLanguage] ?? 'English';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withAlpha(25)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withAlpha(50),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row: Mic Badge + Title & Description
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0284C7).withAlpha(50),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '1-2 Min Executive Voice Briefing',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15.5,
+                        color: Colors.white,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Spoken AI summary in your chosen language',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Language Selector Bar
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(50),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withAlpha(15)),
+            ),
+            child: Row(
+              children: [
+                ...[
+                  {'code': 'en', 'label': 'English'},
+                  {'code': 'hi', 'label': 'हिंदी (Hindi)'},
+                  {'code': 'gu', 'label': 'ગુજરાતી (Gujarati)'},
+                ].map((l) {
+                  final isSel = _audioSummaryLanguage == l['code'];
+                  return Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _isGeneratingAudioSummary
+                          ? null
+                          : () => _fetchOrGenerateAudioSummary(l['code']!),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSel ? const Color(0xFF38BDF8) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: isSel
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF38BDF8).withAlpha(60),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  )
+                                ]
+                              : [],
+                        ),
+                        child: Text(
+                          l['label']!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
+                            color: isSel ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Audio Player or Generation State
+          if (_isGeneratingAudioSummary) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(8),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withAlpha(15)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Color(0xFF38BDF8),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Synthesizing $currentLangLabel voice briefing...',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Generating AI spoken script & neural audio stream',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_currentAudioSummary != null &&
+              (_currentAudioSummary!['audioUrl'] ?? '').isNotEmpty) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Dark Cohesive Audio Player
+                AudioPlayerWidget(
+                  key: ValueKey(_currentAudioSummary!['audioUrl']),
+                  audioUrl: '${ApiConstants.serverBaseUrl}${_currentAudioSummary!['audioUrl']}',
+                  title: 'Executive Briefing ($currentLangLabel)',
+                  isDarkTheme: true,
+                ),
+                const SizedBox(height: 12),
+
+                // Meta Info: Voice Actor Badge + Regenerate Button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withAlpha(20),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF38BDF8).withAlpha(40)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.record_voice_over_rounded, size: 13, color: Color(0xFF38BDF8)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Voice: ${_currentAudioSummary!['voice'] ?? (_audioSummaryLanguage == 'gu' ? 'ગુજરાતી Native Voice' : _audioSummaryLanguage == 'hi' ? 'हिंदी Native Voice' : 'Indian English Native Voice')}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _isGeneratingAudioSummary
+                          ? null
+                          : () => _fetchOrGenerateAudioSummary(_audioSummaryLanguage, forceRegenerate: true),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.replay_rounded, size: 14, color: Color(0xFF94A3B8)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Regenerate',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // View Script Accordion
+                if ((_currentAudioSummary!['script'] ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Row(
+                        children: const [
+                          Icon(Icons.description_outlined, size: 15, color: Color(0xFF38BDF8)),
+                          SizedBox(width: 6),
+                          Text(
+                            'View Spoken Voiceover Script',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(50),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withAlpha(15)),
+                          ),
+                          child: Text(
+                            _currentAudioSummary!['script'],
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.55,
+                              color: Color(0xFFE2E8F0),
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ] else ...[
+            InkWell(
+              onTap: () => _fetchOrGenerateAudioSummary(_audioSummaryLanguage),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF38BDF8).withAlpha(40),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.play_circle_filled_rounded, size: 22, color: Color(0xFF0F172A)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Generate & Play $currentLangLabel Briefing',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageSelectorBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withAlpha(6),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.translate_rounded, size: 16, color: Color(0xFF2563EB)),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'MOM Language (Multilingual Support)',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const Spacer(),
+              if (_isTranslating)
+                Row(
+                  children: const [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Translating...',
+                      style: TextStyle(fontSize: 11.5, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildLangTab('en', 'English'),
+              const SizedBox(width: 8),
+              _buildLangTab('hi', 'Hindi (हिंदी)'),
+              const SizedBox(width: 8),
+              _buildLangTab('gu', 'Gujarati (ગુજરાતી)'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLangTab(String code, String label) {
+    final isSelected = _selectedLanguage == code;
+    return Expanded(
+      child: InkWell(
+        onTap: _isTranslating ? null : () => _changeLanguage(code),
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF2563EB).withAlpha(30),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInformalSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withAlpha(6),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: _isInformalExpanded,
+          onExpansionChanged: (expanded) {
+            setState(() => _isInformalExpanded = expanded);
+          },
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 18,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          title: Row(
+            children: [
+              const Text(
+                '8. Informal / Side Discussions',
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${_otherNotesControllers.length}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          subtitle: const Text(
+            'Casual banter, secondary remarks, non-core talk',
+            style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Column(
+                children: [
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  const SizedBox(height: 12),
+                  if (_otherNotesControllers.isEmpty)
+                    _buildEmptyBox(
+                      'No informal remarks recorded.',
+                      onAdd: () => _addNewItem(_otherNotesControllers, 'Informal Note'),
+                    )
+                  else
+                    _buildEditableList(
+                      controllers: _otherNotesControllers,
+                      icon: Icons.notes_rounded,
+                      color: const Color(0xFF64748B),
+                      itemType: 'informal note',
+                    ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _addNewItem(_otherNotesControllers, 'Informal Note'),
+                      icon: const Icon(Icons.add, size: 15, color: Color(0xFF64748B)),
+                      label: const Text(
+                        'Add Informal Note',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEditableCard({
     required TextEditingController controller,
     required String hint,
+    Color accentColor = const Color(0xFF3B82F6),
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1050,28 +1943,45 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(5),
+            color: const Color(0xFF0F172A).withAlpha(6),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: TextField(
-        controller: controller,
-        maxLines: null,
-        keyboardType: TextInputType.multiline,
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          hintText: hint,
-          isDense: true,
-          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-        ),
-        style: const TextStyle(
-          fontSize: 14.5,
-          height: 1.65,
-          color: Color(0xFF1E293B),
-          letterSpacing: 0.15,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: accentColor, width: 4),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: TextField(
+            controller: controller,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              filled: false,
+              fillColor: Colors.transparent,
+              hintText: hint,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13.5),
+            ),
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.6,
+              color: Color(0xFF1E293B),
+              letterSpacing: 0.1,
+            ),
+          ),
         ),
       ),
     );
@@ -1083,67 +1993,149 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     required Color color,
     required String itemType,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(5),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: controllers.length,
+      itemBuilder: (ctx, i) {
+        final text = controllers[i].text;
+        // Check if there is a bold/topic prefix like "**Topic**:" or "[Topic]:"
+        String? topicHeader;
+        if (text.startsWith('**') && text.contains('**:')) {
+          final end = text.indexOf('**:');
+          topicHeader = text.substring(2, end).trim();
+        } else if (text.startsWith('[') && text.contains(']:')) {
+          final end = text.indexOf(']:');
+          topicHeader = text.substring(1, end).trim();
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withAlpha(6),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: controllers.length,
-        separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-        itemBuilder: (ctx, i) => ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          leading: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withAlpha(25),
-              shape: BoxShape.circle,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: color, width: 4),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Row: Badge + Optional Topic Header + Delete Icon
+                  Row(
+                    children: [
+                      // Point Number Badge with Icon
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(22),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 12.5, color: color),
+                            const SizedBox(width: 4.5),
+                            Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (topicHeader != null) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            topicHeader,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+
+                      // Delete Action Button
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFF94A3B8)),
+                        tooltip: 'Delete $itemType',
+                        onPressed: () async {
+                          final confirmed = await _confirmDelete(
+                            itemType,
+                            previewText: controllers[i].text,
+                          );
+                          if (confirmed && mounted) {
+                            setState(() {
+                              controllers.removeAt(i);
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Point Content Input with no border artifacts
+                  TextField(
+                    controller: controllers[i],
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      height: 1.55,
+                      color: Color(0xFF1E293B),
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Icon(icon, size: 16, color: color),
           ),
-          title: TextField(
-            controller: controllers[i],
-            maxLines: null,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 14, height: 1.4, color: AppTheme.textPrimary),
-          ),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
-            tooltip: 'Delete $itemType',
-            onPressed: () async {
-              final confirmed = await _confirmDelete(
-                itemType,
-                previewText: controllers[i].text,
-              );
-              if (confirmed && mounted) {
-                setState(() {
-                  controllers.removeAt(i);
-                });
-              }
-            },
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildEmptyBox(String text, {VoidCallback? onAdd}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1152,12 +2144,12 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Text(text, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+            child: Text(text, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
           ),
           if (onAdd != null)
             TextButton.icon(
               onPressed: onAdd,
-              icon: const Icon(Icons.add, size: 16, color: AppTheme.primaryColor),
+              icon: const Icon(Icons.add, size: 15, color: AppTheme.primaryColor),
               label: const Text('Add', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1173,22 +2165,58 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
   Widget _buildSectionHeader({
     required IconData icon,
     required String title,
+    required Color badgeColor,
+    int? count,
     VoidCallback? onAdd,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppTheme.primaryColor),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: badgeColor.withAlpha(20),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: badgeColor),
+          ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+                if (count != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withAlpha(20),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (onAdd != null)
@@ -1198,22 +2226,22 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                 onTap: onAdd,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withAlpha(20),
+                    color: badgeColor.withAlpha(18),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.add, size: 16, color: AppTheme.primaryColor),
-                      SizedBox(width: 4),
+                    children: [
+                      Icon(Icons.add, size: 14, color: badgeColor),
+                      const SizedBox(width: 3),
                       Text(
                         'Add',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryColor,
+                          color: badgeColor,
                         ),
                       ),
                     ],
@@ -1226,4 +2254,5 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     );
   }
 }
+
 

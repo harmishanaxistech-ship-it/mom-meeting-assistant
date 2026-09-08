@@ -81,6 +81,12 @@ const momSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    otherNotes: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
     nextMeeting: {
       date: {
         type: String,
@@ -106,6 +112,20 @@ const momSchema = new mongoose.Schema(
     translations: {
       type: Map,
       of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    // Cache for 1-2 min short spoken audio summaries by language ('en', 'hi', 'gu')
+    audioSummaries: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          audioUrl: { type: String, default: '' },
+          script: { type: String, default: '' },
+          language: { type: String, default: 'en' },
+          durationSeconds: { type: Number, default: 0 },
+        },
+        { _id: false }
+      ),
       default: {},
     },
     // Token usage tracking from OpenAI

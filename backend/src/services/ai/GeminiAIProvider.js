@@ -1,28 +1,83 @@
-const Groq = require('groq-sdk');
+const { GoogleGenAI } = require('@google/genai');
 const AIProvider = require('./AIProvider');
 const env = require('../../config/env');
 
-class GroqAIProvider extends AIProvider {
+class GeminiAIProvider extends AIProvider {
   constructor() {
     super();
-    this.groq = new Groq({
-      apiKey: env.groqApiKey,
-    });
+    this.apiKey = env.geminiApiKey || process.env.GEMINI_API_KEY || '';
+    this.model = 'gemini-3.6-flash'; // Current recommended model per Google AI
+    if (this.apiKey) {
+      this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+    }
   }
 
   /**
-   * Generates an exhaustive, high-depth structured MOM from meeting details and transcript
-   * covering all dialogue, decisions, technical context, and action items thoroughly.
+   * Retry wrapper with exponential back-off for 503 / overloaded errors.
+   * Attempts up to maxRetries times before throwing.
    */
-  async generateMOM(meetingData, transcriptData) {
+  async _retryGenerate(prompt, maxRetries = 3) {
+    let lastErr;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model: this.model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+        return response.text;
+      } catch (err) {
+        lastErr = err;
+        const isOverload =
+          err.message?.includes('503') ||
+          err.message?.toLowerCase().includes('overload') ||
+          err.message?.toLowerCase().includes('unavailable');
+        if (isOverload && attempt < maxRetries) {
+          const waitMs = 1500 * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
+          console.warn(`[Gemini AI] Model overloaded (attempt ${attempt}/${maxRetries}). Retrying in ${waitMs}ms...`);
+          await new Promise((r) => setTimeout(r, waitMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+    throw lastErr;
+  }
+
+  async generateMOM(meetingData, transcriptData, options = {}) {
     const rawTranscript =
       transcriptData.rawText ||
-      (transcriptData.segments || []).map((s) => `${s.speaker}: ${s.text}`).join('\n');
+      (transcriptData.segments || []).map((s) => s.text).join(' ');
+
+    if (!rawTranscript || rawTranscript.trim().length < 20) {
+      return this._emptyMOM('No transcript available to generate MOM from.');
+    }
+
+    const participantsList =
+      Array.isArray(meetingData.participants) && meetingData.participants.length > 0
+        ? meetingData.participants.join(', ')
+        : 'Unknown';
+
+    let historyBlock = '';
+    if (Array.isArray(options.pastContext) && options.pastContext.length > 0) {
+      historyBlock = `\nHISTORICAL CONTEXT (previous meetings, for continuity only):\n`;
+      options.pastContext.forEach((p, idx) => {
+        historyBlock += `[Past Meeting ${idx + 1}: "${p.title}"]\n`;
+        historyBlock += `- Attendees: ${(p.participants || []).join(', ')}\n`;
+        historyBlock += `- Summary: ${(p.summary || 'N/A').substring(0, 300)}\n`;
+        historyBlock += `- Open Action Items: ${
+          (p.actionItems || []).map((a) => `${a.owner}: ${a.task}`).join('; ') || 'None'
+        }\n\n`;
+      });
+    }
 
     const participantsArray = Array.isArray(meetingData.participants) ? meetingData.participants : [];
     const participantsNumbered = participantsArray.map((n, i) => `${i + 1}. ${n}`).join('\n');
 
-    const prompt = `You are an elite corporate Chief of Staff and certified business executive secretary producing world-class, market-standard Minutes of Meeting (MOM).
+    const systemPrompt = `You are an elite corporate Chief of Staff and certified business executive secretary producing world-class, market-standard Minutes of Meeting (MOM).
 
 Your output must match the highest global corporate standards used in Fortune 500 enterprises, tech firms, and consulting organizations (McKinsey, BCG, Big 4).
 
@@ -72,7 +127,7 @@ MARKET-STANDARD MOM GUIDELINES:
 ═══════════════════════════════════════════
 REQUIRED JSON FORMAT:
 ═══════════════════════════════════════════
-Return ONLY valid JSON with NO markdown ticks or backticks:
+Respond strictly with valid JSON (no markdown fences, no explanatory text):
 {
   "meetingSummary": "Executive summary in 3-4 professional business paragraphs outlining meeting objective, critical discussion themes, resolutions, and forward commitments.",
   "agenda": [
@@ -114,12 +169,12 @@ Return ONLY valid JSON with NO markdown ticks or backticks:
     "time": "Spoken time or empty string"
   },
   "conclusion": "Formal concluding statement capturing overall meeting consensus, strategic alignment, and the path forward."
-}
+}`;
 
-VERIFIED PARTICIPANTS LIST:
+    const userPrompt = `VERIFIED PARTICIPANTS LIST:
 ${participantsNumbered || 'None specified'}
 
-MEETING DETAILS:
+${historyBlock}MEETING DETAILS:
 Title: ${meetingData.title || 'Business Meeting'}
 Type: ${meetingData.meetingType || 'General'}
 Location: ${meetingData.location || 'N/A'}
@@ -127,7 +182,7 @@ Stated Agenda: ${meetingData.agenda || 'N/A'}
 
 FULL MEETING TRANSCRIPT:
 ---
-${rawTranscript || 'General meeting discussion.'}
+${rawTranscript}
 ---
 
 INSTRUCTIONS:
@@ -141,67 +196,90 @@ INSTRUCTIONS:
 8. Capture all commitments, metrics, decisions, and deadlines.`;
 
 
-    const chatCompletion = await this.groq.chat.completions.create({
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      model: 'openai/gpt-oss-120b',
-      temperature: 0.2, // lower temperature for precision, structure and consistency
-      max_completion_tokens: 4096, // expanded to 4096 to prevent truncation of full detailed content
-      top_p: 1,
-      stream: false,
-      reasoning_effort: 'medium',
-      stop: null,
-    });
-
-    let raw = chatCompletion.choices[0]?.message?.content || '{}';
-    raw = raw.replace(/```json/g, '').replace(/```/g, '').trim();
-
-    let parsed = {};
     try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      console.error('[Groq MOM Parse Error]:', e.message);
+      const content = await this._retryGenerate(`${systemPrompt}\n\n${userPrompt}`);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        console.error('[Gemini AI] Failed to parse Gemini response as JSON:', e.message);
+        return this._emptyMOM('AI response could not be parsed. Please reprocess.');
+      }
+
+      const toTitleCase = (str) =>
+        str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+      const officialNames = Array.isArray(meetingData.participants)
+        ? meetingData.participants.map((n) => toTitleCase(n))
+        : [];
+      const normalizeName = (name) => {
+        if (!name || name.trim().length === 0) return 'Team';
+        const clean = name.trim().toLowerCase();
+        if (clean === 'team' || clean === 'all' || clean === 'everyone') return 'Team';
+        for (const official of officialNames) {
+          const offLower = official.toLowerCase();
+          if (
+            clean === offLower ||
+            clean.includes(offLower) ||
+            offLower.includes(clean) ||
+            offLower.split(' ')[0] === clean ||
+            clean.split(' ')[0] === offLower.split(' ')[0]
+          ) {
+            return official;
+          }
+        }
+        return name.trim();
+      };
+
+      return {
+        meetingSummary: parsed.meetingSummary || '',
+        agenda: Array.isArray(parsed.agenda) ? parsed.agenda : [],
+        keyDiscussionPoints: Array.isArray(parsed.keyDiscussionPoints) ? parsed.keyDiscussionPoints : [],
+        decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+        actionItems: Array.isArray(parsed.actionItems)
+          ? parsed.actionItems.map((item) => ({
+              task: item.task || '',
+              owner: normalizeName(item.owner),
+              deadline: item.deadline || 'TBD',
+              priority: ['High', 'Medium', 'Low'].includes(item.priority) ? item.priority : 'Medium',
+            }))
+          : [],
+        pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
+        risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+        nextSteps: Array.isArray(parsed.nextSteps) ? parsed.nextSteps : [],
+        otherNotes: Array.isArray(parsed.otherNotes) ? parsed.otherNotes : [],
+        nextMeeting: {
+          date: parsed.nextMeeting?.date || '',
+          time: parsed.nextMeeting?.time || '',
+        },
+        conclusion: parsed.conclusion || '',
+        tokenUsage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+        },
+      };
+    } catch (err) {
+      console.error('[Gemini AI] generateMOM error:', err.message);
+      return this._emptyMOM(`Gemini error: ${err.message}`);
     }
+  }
 
-    const usage = chatCompletion.usage || {};
-
+  _emptyMOM(reason) {
     return {
-      meetingSummary: parsed.meetingSummary || '',
-      agenda: Array.isArray(parsed.agenda) ? parsed.agenda : [],
-      keyDiscussionPoints: Array.isArray(parsed.keyDiscussionPoints)
-        ? parsed.keyDiscussionPoints
-        : [],
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
-      actionItems: Array.isArray(parsed.actionItems)
-        ? parsed.actionItems.map((item) => ({
-            task: item.task || '',
-            owner: item.owner || '',
-            deadline: item.deadline || '',
-            priority: ['High', 'Medium', 'Low'].includes(item.priority)
-              ? item.priority
-              : 'Medium',
-          }))
-        : [],
-      pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
-      risks: Array.isArray(parsed.risks) ? parsed.risks : [],
-      nextSteps: Array.isArray(parsed.nextSteps) ? parsed.nextSteps : [],
-      otherNotes: Array.isArray(parsed.otherNotes) ? parsed.otherNotes : [],
-      nextMeeting: {
-        date: parsed.nextMeeting?.date || '',
-        time: parsed.nextMeeting?.time || '',
-      },
-      conclusion: parsed.conclusion || '',
-      tokenUsage: {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0,
-      },
+      meetingSummary: reason,
+      agenda: [],
+      keyDiscussionPoints: [],
+      decisions: [],
+      actionItems: [],
+      pendingItems: [],
+      risks: [],
+      nextSteps: [],
+      nextMeeting: { date: '', time: '' },
+      conclusion: '',
+      tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     };
   }
 }
 
-module.exports = GroqAIProvider;
+module.exports = GeminiAIProvider;

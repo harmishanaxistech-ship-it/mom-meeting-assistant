@@ -24,9 +24,36 @@ const storage = multer.diskStorage({
   },
 });
 
+// Accepted audio & video MIME types for Whisper transcription
+const ACCEPTED_AUDIO_MIME_TYPES = new Set([
+  'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/x-m4a',
+  'audio/wav', 'audio/wave', 'audio/x-wav',
+  'audio/ogg', 'audio/opus', 'audio/webm',
+  'audio/flac', 'audio/x-flac',
+  'audio/aac', 'audio/x-aac',
+  'audio/wma', 'audio/x-ms-wma',
+  'audio/aiff', 'audio/x-aiff', 'audio/caf',
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/mpeg',
+  // Fallback for generic/unrecognised streams (e.g. .m4a reported as application/octet-stream)
+  'application/octet-stream',
+]);
+
+const ACCEPTED_AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.mp4', '.m4a', '.wav', '.ogg', '.opus', '.webm',
+  '.flac', '.aac', '.wma', '.aiff', '.caf', '.mpeg', '.mpga', '.mov',
+]);
+
 const upload = multer({
   storage,
-  limits: { fileSize: env.upload.maxFileSize },
+  limits: { fileSize: env.upload.maxFileSizeMb * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ACCEPTED_AUDIO_MIME_TYPES.has(file.mimetype) || ACCEPTED_AUDIO_EXTENSIONS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype} (${ext}). Please upload an audio or video file.`), false);
+    }
+  },
 });
 
 /**

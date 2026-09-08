@@ -34,7 +34,7 @@ router.get('/:id/processing-status', getProcessingStatus);
 // Multilingual Translation Endpoint with Caching
 router.post('/:id/translate', async (req, res, next) => {
   try {
-    const { targetLanguage } = req.body;
+    const { targetLanguage, forceRegenerate = false } = req.body;
     const mom = await MOM.findOne({ meetingId: req.params.id });
     if (!mom) {
       return res.status(404).json({ success: false, error: 'MOM not found' });
@@ -42,8 +42,8 @@ router.post('/:id/translate', async (req, res, next) => {
 
     const lang = targetLanguage || 'en';
 
-    // 1. Check if translation is already cached
-    if (mom.translations && mom.translations.get(lang)) {
+    // 1. Check if translation is already cached (unless forceRegenerate is true)
+    if (!forceRegenerate && mom.translations && mom.translations.get(lang)) {
       console.log(`[Translation Cache] Returning cached translation for language: ${lang}`);
       const cached = mom.translations.get(lang);
       return res.status(200).json({
@@ -90,6 +90,7 @@ router.put('/:id/mom', async (req, res, next) => {
       pendingItems,
       risks,
       nextSteps,
+      otherNotes,
       conclusion,
       language = 'en',
     } = req.body;
@@ -107,6 +108,7 @@ router.put('/:id/mom', async (req, res, next) => {
     if (pendingItems !== undefined) mom.pendingItems = pendingItems;
     if (risks !== undefined) mom.risks = risks;
     if (nextSteps !== undefined) mom.nextSteps = nextSteps;
+    if (otherNotes !== undefined) mom.otherNotes = otherNotes;
     if (conclusion !== undefined) mom.conclusion = conclusion;
     mom.isEditedByUser = true;
 
@@ -126,5 +128,64 @@ router.put('/:id/mom', async (req, res, next) => {
 
 // Document Generation & Retrieval Endpoints (Section 28)
 router.route('/:id/document').post(generateDocument).get(getDocuments);
+
+// 1-2 min Spoken Audio Summary Generation (English, Hindi, Gujarati)
+const audioSummaryService = require('../services/ai/AudioSummaryService');
+router.post('/:id/audio-summary', async (req, res, next) => {
+  try {
+    const { language = 'en', forceRegenerate = false, voice } = req.body;
+    const meetingId = req.params.id;
+
+    const mom = await MOM.findOne({ meetingId });
+    if (!mom) {
+      return res.status(404).json({ success: false, error: 'MOM not found for this meeting' });
+    }
+
+    const meeting = await require('../models/Meeting').findById(meetingId);
+
+    // 1. Check if audio summary is already cached (unless forceRegenerate is true)
+    if (!forceRegenerate && mom.audioSummaries && mom.audioSummaries.get(language)) {
+      const cached = mom.audioSummaries.get(language);
+      return res.status(200).json({
+        success: true,
+        data: cached,
+        fromCache: true,
+      });
+    }
+
+    // 2. Generate spoken script
+    const momPayload = {
+      ...mom.toObject(),
+      title: meeting?.title || 'Meeting',
+    };
+    const script = await audioSummaryService.generateScript(momPayload, language);
+
+    // 3. Synthesize speech to MP3
+    const audioResult = await audioSummaryService.textToSpeech(script, language, meetingId);
+
+    const summaryRecord = {
+      audioUrl: audioResult.audioUrl,
+      script,
+      language,
+      durationSeconds: audioResult.durationSeconds,
+      voice: audioResult.voice,
+    };
+
+    if (!mom.audioSummaries) {
+      mom.audioSummaries = new Map();
+    }
+    mom.audioSummaries.set(language, summaryRecord);
+    await mom.save();
+
+    res.status(200).json({
+      success: true,
+      data: summaryRecord,
+      fromCache: false,
+    });
+  } catch (error) {
+    console.error('[AudioSummary Route Error]:', error.message);
+    next(error);
+  }
+});
 
 module.exports = router;

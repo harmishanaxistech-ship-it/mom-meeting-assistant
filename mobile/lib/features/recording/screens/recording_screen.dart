@@ -12,6 +12,7 @@ import '../../meetings/models/meeting_model.dart';
 import '../../meetings/controllers/meeting_controller.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/background_processing_service.dart';
 
 class RecordingScreen extends ConsumerStatefulWidget {
   final Meeting meeting;
@@ -268,68 +269,283 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
 
         showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle_outline, color: AppTheme.accentColor),
-                SizedBox(width: 8),
-                Text('Audio File Selected'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
+          builder: (ctx) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Audio File Icon Badge
+                  Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF3B82F6), Color(0xFF1E3A8A)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1E3A8A).withAlpha(70),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.audio_file_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.audio_file, color: AppTheme.primaryColor),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  const SizedBox(height: 18),
+
+                  // Title
+                  const Text(
+                    'Audio File Selected',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Your recording file is verified and ready for Speech-to-Text & AI analysis.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Selected File Name Banner
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E3A8A).withAlpha(18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.music_note_rounded,
+                              size: 16, color: Color(0xFF1E3A8A)),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Metrics Row (Duration + File Size)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        // Duration Metric
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEEF2FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.timer_rounded,
+                                  size: 16,
+                                  color: Color(0xFF4F46E5),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'DURATION',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF94A3B8),
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      durationLabel,
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        Container(
+                          height: 28,
+                          width: 1,
+                          color: const Color(0xFFCBD5E1),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // Size Metric
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.sd_storage_rounded,
+                                  size: 16,
+                                  color: Color(0xFF059669),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'SIZE',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF94A3B8),
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      '${fileSizeMB.toStringAsFixed(2)} MB',
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+
+                  // Primary Upload CTA
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        _uploadAndProcessMeeting();
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1E3A8A).withAlpha(60),
+                              blurRadius: 14,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Upload & Process MOM',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text('⏱ Duration: $durationLabel', style: const TextStyle(fontSize: 13)),
-                const SizedBox(height: 4),
-                Text('💾 Size: ${fileSizeMB.toStringAsFixed(2)} MB', style: const TextStyle(fontSize: 13)),
-                const SizedBox(height: 14),
-                const Text(
-                  'Ready to generate AI Minutes of Meeting.',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                ),
-              ],
+                  const SizedBox(height: 10),
+
+                  // Cancel Action
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      setState(() {
+                        _recordedFilePath = null;
+                        _pickedFileName = null;
+                      });
+                    },
+                    child: const Text(
+                      'Choose Another File',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _uploadAndProcessMeeting();
-                },
-                icon: const Icon(Icons.auto_awesome, size: 16),
-                label: const Text('Upload & Process MOM'),
-              ),
-            ],
           ),
         );
       }
@@ -353,33 +569,252 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   }
 
   void _showCompletionDialog() {
+    final fileSizeKB = _recordedFilePath != null && File(_recordedFilePath!).existsSync()
+        ? (File(_recordedFilePath!).lengthSync() / 1024).toStringAsFixed(1)
+        : null;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Meeting Completed'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Duration: ${_formatDuration(_recordDurationSeconds)}'),
-            const SizedBox(height: 8),
-            Text(
-              _recordedFilePath != null && File(_recordedFilePath!).existsSync()
-                  ? 'Real Audio: Recorded (${(File(_recordedFilePath!).lengthSync() / 1024).toStringAsFixed(1)} KB)'
-                  : 'Audio: Ready for AI processing',
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _uploadAndProcessMeeting();
-            },
-            child: const Text('Upload & Process with OpenAI'),
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Top Success Icon
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF10B981), Color(0xFF059669)],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withAlpha(70),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  color: Colors.white,
+                  size: 38,
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // Title
+              const Text(
+                'Meeting Recorded',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Your session audio has been captured in studio quality and is ready for AI analysis.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Metric Stats Row Card
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    // Duration Metric
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF2FF),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.timer_rounded,
+                              size: 18,
+                              color: Color(0xFF4F46E5),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'DURATION',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF94A3B8),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _formatDuration(_recordDurationSeconds),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Container(
+                      height: 32,
+                      width: 1,
+                      color: const Color(0xFFCBD5E1),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // File / Quality Metric
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.graphic_eq_rounded,
+                              size: 18,
+                              color: Color(0xFF059669),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'AUDIO SIZE',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF94A3B8),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  fileSizeKB != null ? '$fileSizeKB KB' : 'Studio AAC',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              // Action Buttons
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _uploadAndProcessMeeting();
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1E3A8A).withAlpha(60),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Upload & Generate MOM',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Re-record / Cancel text action
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  setState(() {
+                    _recordDurationSeconds = 0;
+                    _recordedFilePath = null;
+                  });
+                },
+                child: const Text(
+                  'Discard & Re-record',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -429,9 +864,9 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
             setState(() {
               _processingPercentage = percent;
               if (stage == 'transcription') {
-                _processingStage = 'Transcribing with OpenAI Whisper...';
+                _processingStage = 'Transcribing audio with Speech AI...';
               } else if (stage == 'ai_analysis' || stage == 'mom_generation') {
-                _processingStage = 'Extracting Structured MOM with GPT-4o-mini...';
+                _processingStage = 'Extracting Structured Minutes of Meeting...';
               }
             });
           }
@@ -484,9 +919,15 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
 
       // Step 3: Kick off async STT & AI processing (returns 202 immediately)
       setState(() {
-        _processingStage = 'Starting OpenAI Whisper transcription...';
+        _processingStage = 'Starting Speech-to-Text transcription...';
         if (_processingPercentage < 35.0) _processingPercentage = 35.0;
       });
+
+      // Register with app-wide background processing service so user gets notified if they leave
+      BackgroundProcessingService().startTracking(
+        meetingId: widget.meeting.id,
+        meetingTitle: widget.meeting.title,
+      );
 
       // POST /process returns 202 immediately — backend runs in background
       await client.dio.post(
@@ -494,7 +935,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
       );
 
       setState(() {
-        _processingStage = 'AI is transcribing your audio with Whisper...';
+        _processingStage = 'AI is transcribing your audio accurately...';
         if (_processingPercentage < 40.0) _processingPercentage = 40.0;
       });
 
@@ -519,9 +960,9 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
               setState(() {
                 _processingPercentage = percent;
                 if (stage == 'transcription') {
-                  _processingStage = 'OpenAI Whisper: Transcribing Audio...';
+                  _processingStage = 'Speech-to-Text: Transcribing Audio...';
                 } else if (stage == 'ai_analysis') {
-                  _processingStage = 'GPT-4o: Extracting Structured MOM...';
+                  _processingStage = 'AI Engine: Extracting Structured Minutes...';
                 } else if (stage == 'mom_generation') {
                   _processingStage = 'Finalising Minutes of Meeting...';
                 }
@@ -532,6 +973,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
             if (stage == 'completed' || meetingStatus == 'completed') {
               timer.cancel();
               _processingTimer?.cancel();
+              BackgroundProcessingService().stopTracking(widget.meeting.id);
 
               if (mounted) {
                 setState(() {
@@ -557,6 +999,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
             if (stage == 'failed' || meetingStatus == 'failed') {
               timer.cancel();
               _processingTimer?.cancel();
+              BackgroundProcessingService().stopTracking(widget.meeting.id);
               if (mounted) {
                 setState(() => _isProcessing = false);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -594,372 +1037,957 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
         (_estimatedTotalSeconds - _elapsedProcessingSeconds).clamp(0, 300);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text(widget.meeting.title),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.meeting.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+                letterSpacing: -0.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const Text(
+              'Session Recording Studio',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: _isProcessing
-              ? Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(10),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
+        child: _isProcessing
+            ? _buildProcessingState(remainingSeconds)
+            : SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Meeting Context Card (Agenda + Attendees)
+                    _buildMeetingContextCard(),
+                    const SizedBox(height: 20),
+
+                    // Main Recording / Audio Center Studio Card
+                    _buildStudioCard(),
+                    const SizedBox(height: 20),
+
+                    // Action Controls
+                    if (!_isRecording) ...[
+                      _buildActionOptions(),
+                    ] else ...[
+                      _buildActiveRecordingControls(),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // Footer branding
+                    Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Studio Quality Audio • Powered by Anaxistech AI',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Column(
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildMeetingContextCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E293B).withAlpha(8),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header banner strip
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(19),
+                topRight: Radius.circular(19),
+              ),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFEDF2F7)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E3A8A).withAlpha(18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.dashboard_customize_rounded,
+                    size: 16,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Meeting Overview',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: Text(
+                    '${widget.meeting.participants.length} ${widget.meeting.participants.length == 1 ? 'Attendee' : 'Attendees'}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E40AF),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Agenda Section
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.notes_rounded, size: 14, color: Color(0xFF4F46E5)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Agenda',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF64748B),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.meeting.agenda.isNotEmpty
+                                ? widget.meeting.agenda
+                                : 'General Discussion & Strategy Review',
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF1E293B),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(height: 1, color: Color(0xFFF1F5F9)),
+                ),
+
+                // Attendees Section
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.group_rounded, size: 14, color: Color(0xFF059669)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Participants',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF64748B),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          if (widget.meeting.participants.isNotEmpty)
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: widget.meeting.participants.map((name) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 9,
+                                        backgroundColor: const Color(0xFF1E3A8A),
+                                        child: Text(
+                                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            )
+                          else
+                            const Text(
+                              'No attendees registered for this session',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontStyle: FontStyle.italic,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudioCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _isRecording
+              ? (_isPaused ? const Color(0xFFFBBF24) : const Color(0xFFFCA5A5))
+              : const Color(0xFFE2E8F0),
+          width: _isRecording ? 1.8 : 1.2,
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: _isRecording
+              ? [
+                  _isPaused ? const Color(0xFFFFFBEB) : const Color(0xFFFEF2F2),
+                  Colors.white,
+                ]
+              : [
+                  const Color(0xFFF8FAFC),
+                  Colors.white,
+                ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _isRecording
+                ? (_isPaused
+                    ? const Color(0xFFF59E0B).withAlpha(20)
+                    : const Color(0xFFEF4444).withAlpha(20))
+                : const Color(0xFF1E293B).withAlpha(8),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Animated Pulse / Mic Ring
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              if (_isRecording && !_isPaused)
+                Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEF4444).withAlpha(25),
+                  ),
+                ),
+              Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _isRecording
+                        ? (_isPaused
+                            ? [const Color(0xFFF59E0B), const Color(0xFFD97706)]
+                            : [const Color(0xFFEF4444), const Color(0xFFDC2626)])
+                        : [const Color(0xFF1E3A8A), const Color(0xFF3B82F6)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _isRecording
+                          ? (_isPaused
+                              ? const Color(0xFFF59E0B).withAlpha(70)
+                              : const Color(0xFFEF4444).withAlpha(80))
+                          : const Color(0xFF1E3A8A).withAlpha(50),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _isRecording
+                      ? (_isPaused ? Icons.pause_rounded : Icons.mic_rounded)
+                      : (_pickedFileName != null ? Icons.audio_file_rounded : Icons.mic_rounded),
+                  size: 48,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Status Badge Pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: BoxDecoration(
+              color: _isRecording
+                  ? (_isPaused ? const Color(0xFFFEF3C7) : const Color(0xFFFEE2E2))
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isRecording
+                    ? (_isPaused ? const Color(0xFFFDE68A) : const Color(0xFFFECACA))
+                    : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isRecording)
+                  Container(
+                    width: 7,
+                    height: 7,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: _isPaused ? const Color(0xFFD97706) : const Color(0xFFDC2626),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                Text(
+                  _isRecording
+                      ? (_isPaused ? 'RECORDING PAUSED' : 'LIVE RECORDING IN PROGRESS')
+                      : (_pickedFileName != null
+                          ? 'AUDIO FILE SELECTED'
+                          : 'READY TO RECORD OR UPLOAD'),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    color: _isRecording
+                        ? (_isPaused ? const Color(0xFFB45309) : const Color(0xFFB91C1C))
+                        : const Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // High Contrast Digital Timer
+          Text(
+            _formatDuration(_recordDurationSeconds),
+            style: const TextStyle(
+              fontSize: 42,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+              letterSpacing: 3,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+
+          if (_pickedFileName != null && !_isRecording) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      _pickedFileName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF15803D),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionOptions() {
+    return Column(
+      children: [
+        // Primary Record Button
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _startRecording,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFDC2626).withAlpha(70),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.mic_rounded, color: Colors.white, size: 22),
+                  SizedBox(width: 10),
+                  Text(
+                    'Start Recording Microphone',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Modern OR Divider
+        Row(
+          children: [
+            Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Text(
+                'OR CHOOSE AUDIO FILE',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // Secondary Upload Button
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: _pickAudioFile,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF1E3A8A), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A8A).withAlpha(10),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.cloud_upload_rounded, color: Color(0xFF1E3A8A), size: 22),
+                  SizedBox(width: 10),
+                  Text(
+                    'Upload Audio File (.mp3, .m4a, .wav)',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E3A8A),
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActiveRecordingControls() {
+    return Row(
+      children: [
+        // Pause / Resume Button
+        Expanded(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _isPaused ? _resumeRecording : _pauseRecording,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF334155),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF334155).withAlpha(40),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isPaused ? 'Resume' : 'Pause',
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // Stop & Finish Button
+        Expanded(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _stopRecording,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFDC2626).withAlpha(70),
+                      blurRadius: 12,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.stop_rounded, color: Colors.white, size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'End & Process',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProcessingState(int remainingSeconds) {
+    return Center(
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Hero Progress Radial Card
+            Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFF8FAFC), Colors.white],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A8A).withAlpha(12),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Top Live AI Pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFC7D2FE)),
+                    ),
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Large Percentage Display
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              width: 120,
-                              height: 120,
-                              child: CircularProgressIndicator(
-                                value: (_processingPercentage / 100).clamp(0.0, 1.0),
-                                strokeWidth: 8,
-                                backgroundColor: const Color(0xFFE2E8F0),
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  AppTheme.primaryColor,
-                                ),
-                              ),
-                            ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${_processingPercentage.toInt()}%',
-                                  style: const TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                                const Text(
-                                  'Completed',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Current Stage Text
-                        Text(
-                          _processingStage,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Approximate Remaining Time Card
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.timer_outlined,
-                                  size: 16, color: AppTheme.textSecondary),
-                              const SizedBox(width: 6),
-                              Text(
-                                remainingSeconds > 0
-                                    ? 'Approx. ~$remainingSeconds sec remaining'
-                                    : 'Finishing up...',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF4F46E5),
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(height: 16),
-
+                        const SizedBox(width: 8),
                         const Text(
-                          'Powered by OpenAI Whisper + GPT-4o-mini',
+                          'AI PROCESSING ACTIVE',
                           style: TextStyle(
                             fontSize: 11,
-                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: Color(0xFF3730A3),
                           ),
                         ),
                       ],
                     ),
                   ),
-                )
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Meeting Context Card: Agenda & 5+ Attendees Display
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade200),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(8),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor.withAlpha(20),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(Icons.assignment_outlined,
-                                      size: 18, color: AppTheme.primaryColor),
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Meeting Agenda',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              widget.meeting.agenda.isNotEmpty
-                                  ? widget.meeting.agenda
-                                  : 'General Discussion & Review',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                            const Divider(height: 20),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withAlpha(20),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(Icons.people_outline,
-                                      size: 18, color: Colors.green),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Attendees (${widget.meeting.participants.length})',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            if (widget.meeting.participants.isNotEmpty)
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: widget.meeting.participants.map((name) {
-                                  return Chip(
-                                    avatar: CircleAvatar(
-                                      backgroundColor: AppTheme.primaryColor,
-                                      child: Text(
-                                        name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    label: Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    backgroundColor: const Color(0xFFF1F5F9),
-                                    padding: EdgeInsets.zero,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  );
-                                }).toList(),
-                              )
-                            else
-                              const Text(
-                                'No attendees registered yet',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontStyle: FontStyle.italic,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
+                  const SizedBox(height: 24),
 
-                      // Recording visualizer circle
+                  // Large Radial Progress with Glow
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
                       Container(
-                        width: 120,
-                        height: 120,
+                        width: 140,
+                        height: 140,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _isRecording
-                              ? (_isPaused ? Colors.orange.withAlpha(30) : Colors.red.withAlpha(30))
-                              : AppTheme.primaryColor.withAlpha(20),
-                        ),
-                        child: Icon(
-                          _isRecording ? Icons.mic : Icons.mic_none,
-                          size: 56,
-                          color: _isRecording
-                              ? (_isPaused ? Colors.orange : Colors.red)
-                              : AppTheme.primaryColor,
+                          color: const Color(0xFF1E3A8A).withAlpha(10),
                         ),
                       ),
-                      const SizedBox(height: 16),
-
-                      // Status Text
-                      Text(
-                        _isRecording
-                            ? (_isPaused ? '⏸ Paused' : '🔴 Recording Live Meeting...')
-                            : (_pickedFileName != null
-                                ? '📁 Selected: $_pickedFileName'
-                                : 'Ready to Record or Upload'),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: _isRecording ? Colors.red : AppTheme.textSecondary,
+                      SizedBox(
+                        width: 120,
+                        height: 120,
+                        child: CircularProgressIndicator(
+                          value: (_processingPercentage / 100).clamp(0.0, 1.0),
+                          strokeWidth: 9,
+                          strokeCap: StrokeCap.round,
+                          backgroundColor: const Color(0xFFE2E8F0),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFF1E3A8A),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-
-                      // Timer Duration Display
-                      Text(
-                        _formatDuration(_recordDurationSeconds),
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                    // Controls
-                    if (!_isRecording) ...[
-                      // Option 1: Live Record
-                      ElevatedButton.icon(
-                        onPressed: _startRecording,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red.shade600,
-                        ),
-                        icon: const Icon(Icons.fiber_manual_record),
-                        label: const Text('Start Recording Microphone'),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Divider / OR
-                      Row(
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(child: Divider(color: Colors.grey.shade300)),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          Text(
+                            '${_processingPercentage.toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -1,
                             ),
                           ),
-                          Expanded(child: Divider(color: Colors.grey.shade300)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Option 2: Direct File Upload
-                      OutlinedButton.icon(
-                        onPressed: _pickAudioFile,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                        ),
-                        icon: const Icon(Icons.upload_file, color: AppTheme.primaryColor),
-                        label: const Text(
-                          'Upload Audio File (.mp3, .m4a, .wav)',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _isPaused ? _resumeRecording : _pauseRecording,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey.shade800,
-                              minimumSize: const Size(130, 48),
+                          const Text(
+                            'COMPLETED',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                              color: Color(0xFF64748B),
                             ),
-                            icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
-                            label: Text(_isPaused ? 'Resume' : 'Pause'),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: _stopRecording,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.shade700,
-                              minimumSize: const Size(130, 48),
-                            ),
-                            icon: const Icon(Icons.stop),
-                            label: const Text('Stop'),
                           ),
                         ],
                       ),
                     ],
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 22),
+
+                  // Current Stage Dynamic Headline
+                  Text(
+                    _processingStage.isNotEmpty
+                        ? _processingStage
+                        : 'Processing session audio...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Estimated Remaining Time Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.timer_outlined, size: 15, color: Color(0xFF475569)),
+                        const SizedBox(width: 6),
+                        Text(
+                          remainingSeconds > 0
+                              ? 'Estimated: ~$remainingSeconds sec remaining'
+                              : 'Wrapping up final details...',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+
+                  // Run in Background Button inside card
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: const Color(0xFF1E3A8A),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            content: const Row(
+                              children: [
+                                Icon(Icons.notifications_active_rounded, color: Colors.white, size: 18),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Running in background. You will receive a notification when your MOM is ready!',
+                                    style: TextStyle(fontSize: 12.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 18),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1E293B).withAlpha(6),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.arrow_back_rounded, size: 18, color: Color(0xFF1E3A8A)),
+                            SizedBox(width: 8),
+                            Text(
+                              'Run in Background',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 20),
+
+            // Footer
+            Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Powered by Anaxistech AI',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
         ),
       ),
     );

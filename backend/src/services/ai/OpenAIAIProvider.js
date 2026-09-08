@@ -28,10 +28,8 @@ class OpenAIAIProvider extends AIProvider {
       return this._emptyMOM('No transcript available to generate MOM from.');
     }
 
-    const participantsList =
-      Array.isArray(meetingData.participants) && meetingData.participants.length > 0
-        ? meetingData.participants.join(', ')
-        : 'Unknown';
+    const participantsArray = Array.isArray(meetingData.participants) ? meetingData.participants : [];
+    const participantsNumbered = participantsArray.map((n, i) => `${i + 1}. ${n}`).join('\n');
 
     // Historical meeting context for recurring teams (last 3 meetings)
     let historyBlock = '';
@@ -47,70 +45,123 @@ class OpenAIAIProvider extends AIProvider {
       });
     }
 
-    const systemPrompt = `You are an expert AI Executive Assistant specializing in analyzing raw audio transcripts and generating precise, structured Minutes of Meeting (MOM).
+    const systemPrompt = `You are an elite corporate Chief of Staff and certified business executive secretary producing world-class, market-standard Minutes of Meeting (MOM).
 
-Your task is to convert raw speech-to-text input into an accurate, complete, and professional MOM. Follow these strict guidelines:
+Your output must match the highest global corporate standards used in Fortune 500 enterprises, tech firms, and consulting organizations (McKinsey, BCG, Big 4).
 
-1. PHONETIC & CONTEXTUAL ACCURACY:
-   - Base everything strictly on the transcript as the single source of truth. Ignore meeting titles if they conflict with spoken content.
-   - Carefully resolve phonetically ambiguous words using context (e.g., distinguish dates like "19th" vs. "90s" / "ognis", "20th" vs. "20s", "engagement" vs. "19th").
-   - Correct technical jargon, product names, tools, and platforms based on context (e.g., "VoIP", "Vyke", "FaceTime", "MOM project", "Flutter", "Teams", "Attendance app").
-   - Accurately map participant names mentioned in dialogue to the verified attendee list.
+═══════════════════════════════════════════
+MARKET-STANDARD MOM GUIDELINES:
+═══════════════════════════════════════════
+1. PROFESSIONAL CORPORATE TONE:
+   - Use crisp, objective, authoritative business language (e.g., "The team deliberated on...", "It was resolved to...", "Key dependencies were identified around...").
+   - Eliminate colloquialisms, conversational filler words, stuttering, and informal banter.
+   - Present information logically with high clarity, structure, and readability.
 
-2. LOGISTICS & ACTIONABLE DETAILS (DO NOT OVER-SUMMARIZE):
-   - Extract all specific logistics: travel dates, transit instructions, mode of transport (e.g., Metro vs cabs), communication setups (e.g., VoIP balances like €10, Wi-Fi calling, WhatsApp, Teams, FaceTime).
-   - Capture exact numbers and metrics (e.g., employee count filters like 11+ headcount, budget amounts, costs like 0.5 EUR/min).
-   - Never omit operational context (e.g., past feedback from previous trips, preferences, geographical clustering of meetings, travel constraints).
-   - Capture all target sectors and industries (e.g., manufacturing, transportation, solar energy, bakery) and upcoming events (e.g., Expos).
+2. TOPIC CONSOLIDATION & UNIFIED CLUSTERING (CRITICAL - NO SPLIT TOPICS):
+   - Consolidate all discussions belonging to the same project, application, feature, or theme into EXACTLY ONE comprehensive point in "keyDiscussionPoints".
+   - Flow / Fragmentation Rule: If participants start discussing Project A (e.g., "Wafir Application"), get interrupted or divert to Project B (e.g., "Beeline Application"), and later return to Project A, DO NOT create multiple split points for Project A. Instead, synthesize and merge ALL information, updates, technical details, and decisions about Project A into ONE consolidated entry, and Project B into ONE separate entry.
+   - Every discussion point MUST begin with a bold topic headline or subject tag, followed by substantive detail:
+     Format: "**[Project / Topic Name]**: [Detailed consolidated synthesis of the discussion, context, figures, tools/platforms, and outcome. If a specific participant was explicitly named/identified as having driven this topic, note: (Initiated by [VerifiedName]) or ([VerifiedName] highlighted that...)]"
+   - Under no circumstances make up or guess speaker names. If the speaker was NOT explicitly named in the conversation, do not invent one — simply present the business point with its topic header.
 
-3. STRUCTURED OUTPUT FORMAT & EXECUTIVE SUMMARY:
-   - "meetingSummary": A structured executive summary in 2-3 readable paragraphs separated by double newlines ("\\n\\n") providing a clear overview, operational highlights, and strategic agreements.
-   - "keyDiscussionPoints": Grouped logically by topic with a category heading prefix ('Topic Category: Detailed explanation with all facts, figures, tools, dates, and operational criteria'). Never return brief, vague phrases.
-   - "decisions": Explicit list of agreed-upon outcomes, approvals, and criteria.
-   - "actionItems": Concrete, unambiguous tasks with (task | owner | priority | deadline). Split compound tasks into separate items. Assign each to the specific person responsible (or "Team" if collective).
-   - "pendingItems", "risks", "nextSteps", "conclusion": Complete operational closure.
+3. DEDUPLICATION & SYNTHESIS:
+   - Eliminate repetitive conversations, repeated arguments, and duplicate talking points.
+   - Merge redundant updates and statements into a single cohesive summary. Do not repeat the same discussion across multiple points.
 
-4. TONE & VERIFICATION:
-   - Maintain a concise, accurate, and highly objective professional tone.
-   - If a specific detail (like an exact name or exact date) is unclear from the audio, state it clearly as "[Unclear / Needs Verification]" rather than guessing.
+4. NON-CORE, INFORMAL & FILLER TALK ROUTED TO "otherNotes":
+   - Place all casual remarks, non-essential chatter, greetings, social banter, jokes, off-topic side discussions, and non-actionable talking strictly in "otherNotes".
+   - Keep "keyDiscussionPoints" 100% clean, professional, and focused on core business, technical, and operational discussions.
 
-Respond with ONLY valid JSON — no markdown, no backticks, no extra text.
+5. ACCURATE ACTION ITEMS (SMART CRITERIA):
+   - Every action item MUST be Specific, Measurable, Actionable, Relevant, and Time-bound.
+   - "task": State with an action verb (e.g., "Prepare and circulate Q3 pipeline review deck", "Finalize API contract for authentication service").
+   - "owner": Assign ONLY to an individual explicitly tasked or volunteered in the transcript (using their exact name from the VERIFIED PARTICIPANTS LIST). If unassigned or group-oriented, assign to "Team".
+   - "deadline": Mention exact deadline/timeline if spoken (e.g., "End of week", "15th October", "Next sprint"), otherwise "TBD".
+   - "priority": Assign "High" for blockers/critical path, "Medium" for regular deliverables, "Low" for exploratory tasks.
 
-JSON structure:
+6. COMPREHENSIVE EXECUTIVE SUMMARY:
+   - Structure into distinct, cohesive paragraphs:
+     - Background & Purpose of the meeting.
+     - Key operational/strategic discussions held.
+     - Core decisions reached and consensus achieved.
+     - Immediate operational horizon and delivery commitments.
+
+7. ACCURACY & FIDELITY:
+   - Base 100% of facts on the provided transcript.
+   - Capture all specific numbers, budgets, headcounts, percentages, technologies, and deadlines mentioned.
+   - Correct technical terminology (e.g., "Flutter", "VoIP", "Kubernetes", "Jira", "AWS", "Figma", "Stripe").
+   - Replace phonetically garbled names with the exact match from VERIFIED PARTICIPANTS LIST (e.g., "Rajesh" -> "Rakesh", "Dharmic" -> "Dharmesh").
+
+═══════════════════════════════════════════
+REQUIRED JSON FORMAT:
+═══════════════════════════════════════════
+Respond strictly with valid JSON (no markdown fences, no backticks, no extra text):
 {
-  "meetingSummary": "Paragraph 1: Executive overview of the meeting and purpose.\n\nParagraph 2: Key operational discussions, project updates, and topics covered.\n\nParagraph 3: Agreed decisions, resolutions, and forward-looking expectations.",
-  "agenda": ["Actual topic 1 from transcript", "Actual topic 2..."],
+  "meetingSummary": "Executive summary in 3-4 professional business paragraphs outlining meeting objective, critical discussion themes, resolutions, and forward commitments.",
+  "agenda": [
+    "Core Agenda Topic 1 discussed in meeting",
+    "Core Agenda Topic 2",
+    "..."
+  ],
   "keyDiscussionPoints": [
-    "Topic Category: Detailed multi-sentence explanation covering all specifics, figures, and logistics discussed",
+    "**[Topic / Functional Area]**: 2-4 sentences providing deep substantive context, technical or business details, numbers/metrics discussed, and the consensus or resolution reached.",
+    "**[Topic / Functional Area]**: 2-4 sentences describing another major segment of the meeting in full detail.",
     "..."
   ],
   "decisions": [
-    "Specific agreed decision with conditions, dates, or criteria",
+    "Formal decision agreed upon with rationales and constraints (e.g., 'Approved adoption of X architecture for Y service due to Z efficiency gains').",
     "..."
   ],
   "actionItems": [
     {
-      "task": "Concrete actionable task",
-      "owner": "Exact name from: ${participantsList} — or 'Team' if shared",
-      "deadline": "Specific date or timeframe mentioned, or 'TBD'",
+      "task": "Actionable task starting with an action verb with full context",
+      "owner": "Exact verified participant name IF explicitly assigned, otherwise 'Team'",
+      "deadline": "Spoken timeframe / date or 'TBD'",
       "priority": "High | Medium | Low"
     }
   ],
-  "pendingItems": ["Open question or unresolved topic from the meeting"],
-  "risks": ["Risk, blocker, or dependency that could delay work"],
-  "nextSteps": ["Immediate follow-up action or upcoming milestone"],
-  "nextMeeting": { "date": "", "time": "" },
-  "conclusion": "Closing summary: what was achieved, alignment reached, and momentum going forward"
+  "pendingItems": [
+    "Unresolved question, blocker, or open dependency requiring further stakeholder review"
+  ],
+  "risks": [
+    "Identified risk, challenge, or operational constraint explicitly discussed during the meeting"
+  ],
+  "nextSteps": [
+    "Immediate next milestone or operational step"
+  ],
+  "otherNotes": [
+    "Informal remarks, non-core discussions, casual banter, greetings, or secondary side topics that do not belong in main business points"
+  ],
+  "nextMeeting": {
+    "date": "Spoken date or empty string",
+    "time": "Spoken time or empty string"
+  },
+  "conclusion": "Formal concluding statement capturing overall meeting consensus, strategic alignment, and the path forward."
 }`;
 
-    const userPrompt = `VERIFIED MEETING PARTICIPANTS: ${participantsList}
-${historyBlock}
-FULL MEETING TRANSCRIPT (extract all information from this):
+    const userPrompt = `VERIFIED PARTICIPANTS LIST:
+${participantsNumbered || 'None specified'}
+
+${historyBlock}MEETING DETAILS:
+Title: ${meetingData.title || 'Business Meeting'}
+Type: ${meetingData.meetingType || 'General'}
+Location: ${meetingData.location || 'N/A'}
+Stated Agenda: ${meetingData.agenda || 'N/A'}
+
+FULL MEETING TRANSCRIPT:
 ---
 ${rawTranscript}
 ---
 
-IMPORTANT: Base your MOM exclusively on the transcript above. Do not use the meeting title "${meetingData.title || ''}" to infer topics — the title may be unrelated to what was actually discussed.`;
+INSTRUCTIONS:
+1. Generate market-standard, executive-grade corporate Minutes of Meeting.
+2. Structure keyDiscussionPoints with professional topic headlines: "**[Topic]**: Detailed business context...".
+3. CONSOLIDATE fragmented discussions: If a project/topic was started, interrupted, and resumed later, merge all related talk into a SINGLE point for that project. Never output duplicate points for the same project/topic.
+4. Eliminate repetitive talking and deduplicate statements across the transcript.
+5. Place casual remarks, greetings, social banter, or non-core informal discussions in "otherNotes" so they do not clutter the primary business discussion points.
+6. Only attach a participant's name if they were explicitly named or clearly self-identified in the transcript. Never guess or invent speaker names.
+7. Correct any phonetic mishearings using the VERIFIED PARTICIPANTS LIST.
+8. Capture all commitments, metrics, decisions, and deadlines.`;
 
     const response = await this.openai.chat.completions.create({
       model: 'gpt-4o',           // Upgraded from gpt-4o-mini for accurate instruction following
@@ -177,6 +228,7 @@ IMPORTANT: Base your MOM exclusively on the transcript above. Do not use the mee
       pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
       risks: Array.isArray(parsed.risks) ? parsed.risks : [],
       nextSteps: Array.isArray(parsed.nextSteps) ? parsed.nextSteps : [],
+      otherNotes: Array.isArray(parsed.otherNotes) ? parsed.otherNotes : [],
       nextMeeting: {
         date: parsed.nextMeeting?.date || '',
         time: parsed.nextMeeting?.time || '',

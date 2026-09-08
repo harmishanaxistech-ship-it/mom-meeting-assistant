@@ -28,12 +28,26 @@ class OpenAITranslationProvider extends TranslationProvider {
     const targetName = langNames[targetLanguage] || targetLanguage;
 
     const systemPrompt = `
-You are a professional multilingual translator specialized in business minutes and executive documents.
-Translate all text contents of the provided MOM JSON structure accurately into ${targetName}.
-CRITICAL: Preserve all paragraph breaks ("\n\n") in "meetingSummary" and "conclusion" so multi-paragraph structure is retained.
-Keep proper names, brand names, and technical terms natural.
-Ensure correct Gujarati / Hindi grammar, formal business terminology, and Unicode characters.
-Return ONLY valid JSON matching the exact input JSON schema.
+You are a professional multilingual business translator specialized in corporate minutes of meeting (MOM).
+Translate all text contents of the provided MOM JSON structure into ${targetName}.
+
+CRITICAL NATURAL BUSINESS LANGUAGE & VOCABULARY GUIDELINES:
+1. DO NOT USE OVERLY PURE, OBSOLETE, OR ARCHAIC WORDS IN GUJARATI OR HINDI.
+2. RETAIN COMMON EVERYDAY ENGLISH & TECH WORDS:
+   - Words frequently used in daily corporate talk should be kept in English or written naturally as spoken without over-translating.
+   - Examples of words to KEEP as common English terms (or write naturally in script/English):
+     * "Meeting" (DO NOT translate to obscure words like અધિવેશન / સંમેલન / સભા or जटिल बैठक) -> use "Meeting" / "મીટિંગ" / "मीटिंग"
+     * "Client" -> "Client" / "ક્લાયન્ટ" / "क्लाइंट"
+     * "Project" -> "Project" / "પ્રોજેક્ટ" / "प्रोजेक्ट"
+     * "Deadline" / "Due date" -> "Deadline" / "ડેડલાઇન" / "डेडलाइन"
+     * "Team" -> "Team" / "ટીમ" / "टीम"
+     * "Task" / "Action Item" -> "Task" / "ટાસ્ક" / "टास्क"
+     * "Update" -> "Update" / "અપડેટ" / "अपडेट"
+     * "Testing" / "QA" / "Release" / "Feature" / "Bug" / "Checklist" / "Deployment" / "Review" / "Call" / "Follow-up" / "Discussion" -> keep natural and recognizable.
+3. Sentence structure and grammar must be 100% natural, modern, and fluent conversational business language understood by real professionals today.
+4. CRITICAL: Preserve all paragraph breaks ("\n\n") in "meetingSummary" and "conclusion".
+5. Keep person names, dates, numbers, and priorities clear and recognizable.
+6. Return ONLY valid JSON matching the exact input JSON schema.
 `;
 
     const userPrompt = `

@@ -22,6 +22,7 @@ module.exports = {
     ai: useGroq ? 'groq' : (process.env.AI_PROVIDER || 'openai'),
     translation: useGroq ? 'groq' : (process.env.TRANSLATION_PROVIDER || 'openai'),
   },
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   groqApiKey: process.env.GROQ_API_KEY || '',
   apiKeys: {

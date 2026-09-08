@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/app_theme.dart';
 import '../controllers/meeting_controller.dart';
 import 'meeting_details_screen.dart';
 
@@ -23,13 +24,13 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   final List<String> _participants = [];
 
-  final List<String> _meetingTypes = [
-    'Team Meeting',
-    'Project Review',
-    'Client Meeting',
-    'Planning Meeting',
-    'General Meeting',
-    'Custom',
+  final List<Map<String, dynamic>> _meetingTypes = [
+    {'name': 'Project Review', 'icon': Icons.insights_rounded},
+    {'name': 'Team Meeting', 'icon': Icons.groups_rounded},
+    {'name': 'Client Meeting', 'icon': Icons.handshake_rounded},
+    {'name': 'Planning Meeting', 'icon': Icons.event_note_rounded},
+    {'name': 'General Meeting', 'icon': Icons.layers_rounded},
+    {'name': 'Custom', 'icon': Icons.more_horiz_rounded},
   ];
 
   @override
@@ -57,12 +58,37 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
     });
   }
 
+  Color _getAvatarColor(String name) {
+    final colors = [
+      const Color(0xFF2563EB),
+      const Color(0xFF7C3AED),
+      const Color(0xFF059669),
+      const Color(0xFFD97706),
+      const Color(0xFFDC2626),
+      const Color(0xFF0891B2),
+    ];
+    final hash = name.codeUnits.fold(0, (prev, elem) => prev + elem);
+    return colors[hash % colors.length];
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.primaryColor,
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF0F172A),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -75,6 +101,18 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
     final picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.primaryColor,
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF0F172A),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -117,160 +155,564 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
     final meetingState = ref.watch(meetingControllerProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Create Meeting'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        title: const Text(
+          'Schedule New Meeting',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Meeting Title
-                TextFormField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Meeting Title *',
-                    hintText: 'e.g., Sprint Planning Q3',
-                    prefixIcon: Icon(Icons.title_outlined),
+                // Header Intro Card
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1E3A8A).withAlpha(35),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  validator: (val) =>
-                      val == null || val.trim().isEmpty ? 'Please enter a title' : null,
-                ),
-                const SizedBox(height: 16),
-
-                // Meeting Type Dropdown
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedMeetingType,
-                  decoration: const InputDecoration(
-                    labelText: 'Meeting Type',
-                    prefixIcon: Icon(Icons.category_outlined),
-                  ),
-                  items: _meetingTypes
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedMeetingType = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Date & Time Row
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: _pickDate,
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Date',
-                            prefixIcon: Icon(Icons.calendar_today_outlined),
-                          ),
-                          child: Text(
-                            DateFormat('dd MMM yyyy').format(_selectedDate),
-                          ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(35),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.add_task_rounded, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Meeting Workspace',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Fill details to generate automated AI Minutes & Action Items.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: InkWell(
-                        onTap: _pickTime,
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Time',
-                            prefixIcon: Icon(Icons.access_time_outlined),
-                          ),
-                          child: Text(_selectedTime.format(context)),
-                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // Section 1: Meeting Title
+                _buildCardSection(
+                  title: 'Meeting Title *',
+                  icon: Icons.title_rounded,
+                  iconColor: const Color(0xFF2563EB),
+                  child: TextFormField(
+                    controller: _titleController,
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    decoration: InputDecoration(
+                      hintText: 'e.g., Q3 Product Roadmap & Architecture',
+                      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                      prefixIcon: const Icon(Icons.edit_note_rounded, color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Location Field
-                TextFormField(
-                  controller: _locationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Location / Room',
-                    hintText: 'e.g., Conference Room B / Google Meet',
-                    prefixIcon: Icon(Icons.location_on_outlined),
+                    validator: (val) =>
+                        val == null || val.trim().isEmpty ? 'Please enter a meeting title' : null,
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Participants Field with Add Button
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _participantController,
-                        decoration: const InputDecoration(
-                          labelText: 'Participants',
-                          hintText: 'Add name & tap +',
-                          prefixIcon: Icon(Icons.people_outline),
-                        ),
-                        onSubmitted: (_) => _addParticipant(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      onPressed: _addParticipant,
-                      icon: const Icon(Icons.add),
-                    ),
-                  ],
-                ),
-                if (_participants.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
+                // Section 2: Meeting Type Selector
+                _buildCardSection(
+                  title: 'Meeting Type',
+                  icon: Icons.category_rounded,
+                  iconColor: const Color(0xFF7C3AED),
+                  child: Wrap(
                     spacing: 8,
-                    runSpacing: 4,
-                    children: _participants
-                        .map(
-                          (name) => Chip(
-                            label: Text(name),
-                            deleteIcon: const Icon(Icons.close, size: 16),
-                            onDeleted: () => _removeParticipant(name),
+                    runSpacing: 8,
+                    children: _meetingTypes.map((type) {
+                      final name = type['name'] as String;
+                      final icon = type['icon'] as IconData;
+                      final isSelected = _selectedMeetingType == name;
+                      return InkWell(
+                        onTap: () => setState(() => _selectedMeetingType = name),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF1E3A8A) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF1E3A8A) : const Color(0xFFE2E8F0),
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF1E3A8A).withAlpha(30),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    )
+                                  ]
+                                : [],
                           ),
-                        )
-                        .toList(),
-                  ),
-                ],
-                const SizedBox(height: 16),
-
-                // Agenda Field
-                TextFormField(
-                  controller: _agendaController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Agenda / Description',
-                    hintText: 'Outline main objectives or topics...',
-                    alignLabelWithHint: true,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                icon,
+                                size: 16,
+                                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
+
+                // Section 3: Date & Time Pickers
+                _buildCardSection(
+                  title: 'Schedule & Timing',
+                  icon: Icons.schedule_rounded,
+                  iconColor: const Color(0xFF059669),
+                  child: Row(
+                    children: [
+                      // Date Selector Card
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickDate,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF059669)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Date',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  DateFormat('dd MMM yyyy').format(_selectedDate),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Time Selector Card
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickTime,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF2563EB)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Time',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _selectedTime.format(context),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Section 4: Location / Meeting Platform
+                _buildCardSection(
+                  title: 'Location / Platform',
+                  icon: Icons.location_on_rounded,
+                  iconColor: const Color(0xFFD97706),
+                  child: TextFormField(
+                    controller: _locationController,
+                    style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF0F172A)),
+                    decoration: InputDecoration(
+                      hintText: 'e.g., Conference Room B, Google Meet, Zoom',
+                      hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                      prefixIcon: const Icon(Icons.videocam_outlined, color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Section 5: Participants
+                _buildCardSection(
+                  title: 'Participants / Attendees',
+                  icon: Icons.people_alt_rounded,
+                  iconColor: const Color(0xFF9333EA),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _participantController,
+                              style: const TextStyle(color: Color(0xFF0F172A)),
+                              decoration: InputDecoration(
+                                hintText: 'Enter participant name & tap +',
+                                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                                prefixIcon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF64748B)),
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                                ),
+                              ),
+                              onSubmitted: (_) => _addParticipant(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            height: 48,
+                            width: 48,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: IconButton(
+                              onPressed: _addParticipant,
+                              icon: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_participants.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _participants.map((name) {
+                            final color = _getAvatarColor(name);
+                            final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: color.withAlpha(15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: color.withAlpha(40)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 10,
+                                    backgroundColor: color,
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    name,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: color.withAlpha(240),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  GestureDetector(
+                                    onTap: () => _removeParticipant(name),
+                                    child: Icon(Icons.cancel_rounded, size: 16, color: color.withAlpha(180)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Section 6: Agenda
+                _buildCardSection(
+                  title: 'Agenda & Discussion Scope',
+                  icon: Icons.format_list_bulleted_rounded,
+                  iconColor: const Color(0xFF0891B2),
+                  child: TextFormField(
+                    controller: _agendaController,
+                    maxLines: 3,
+                    style: const TextStyle(color: Color(0xFF0F172A), height: 1.35),
+                    decoration: InputDecoration(
+                      hintText: 'Outline key topics, targets, or specific deliverables to focus during this session...',
+                      hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.all(16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
 
                 // Submit Button
-                ElevatedButton(
-                  onPressed: meetingState.isLoading ? null : _handleSave,
-                  child: meetingState.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                Container(
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1E3A8A).withAlpha(40),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: meetingState.isLoading ? null : _handleSave,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: meetingState.isLoading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                              SizedBox(width: 8),
+                              Text(
+                                'Create & Proceed to Meeting',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
-                        )
-                      : const Text('Create & Continue'),
+                  ),
                 ),
+                const SizedBox(height: 30),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCardSection({
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: iconColor.withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: iconColor),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }

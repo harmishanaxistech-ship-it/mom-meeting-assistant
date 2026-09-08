@@ -99,9 +99,19 @@ class DocumentService {
           doc.moveDown(1);
         }
 
+        // Other Notes / Informal Remarks
+        if (mom.otherNotes && mom.otherNotes.length > 0) {
+          doc.fontSize(14).fillColor('#475569').text('6. Other Notes & Informal Discussions');
+          doc.moveDown(0.3);
+          mom.otherNotes.forEach((note, idx) => {
+            doc.fontSize(10).fillColor('#64748B').text(`• ${note}`, { lineGap: 2 });
+          });
+          doc.moveDown(1);
+        }
+
         // Conclusion / Next Steps
         if (mom.conclusion) {
-          doc.fontSize(14).fillColor('#1E3A8A').text('6. Conclusion');
+          doc.fontSize(14).fillColor('#1E3A8A').text('7. Conclusion');
           doc.moveDown(0.3);
           doc.fontSize(10).fillColor('#1E293B').text(mom.conclusion);
         }
@@ -210,10 +220,30 @@ class DocumentService {
       docChildren.push(new Paragraph({ text: '' }));
     }
 
+    // Other Notes / Informal Remarks
+    if (mom.otherNotes && mom.otherNotes.length > 0) {
+      docChildren.push(
+        new Paragraph({
+          text: '5. Other Notes & Informal Discussions',
+          heading: HeadingLevel.HEADING_3,
+        })
+      );
+      mom.otherNotes.forEach((note) => {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `• ${note}` }),
+            ],
+          })
+        );
+      });
+      docChildren.push(new Paragraph({ text: '' }));
+    }
+
     if (mom.conclusion) {
       docChildren.push(
         new Paragraph({
-          text: '5. Conclusion',
+          text: '6. Conclusion',
           heading: HeadingLevel.HEADING_3,
         }),
         new Paragraph({ text: mom.conclusion })

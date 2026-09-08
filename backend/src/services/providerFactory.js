@@ -6,6 +6,7 @@ const GroqSpeechToTextProvider = require('./speech/GroqSpeechToTextProvider');
 const MockAIProvider = require('./ai/MockAIProvider');
 const OpenAIAIProvider = require('./ai/OpenAIAIProvider');
 const GroqAIProvider = require('./ai/GroqAIProvider');
+const GeminiAIProvider = require('./ai/GeminiAIProvider');
 
 const MockTranslationProvider = require('./translation/MockTranslationProvider');
 const OpenAITranslationProvider = require('./translation/OpenAITranslationProvider');
@@ -26,6 +27,8 @@ const getSTTProvider = () => {
 
 const getAIProvider = () => {
   switch (env.providers.ai.toLowerCase()) {
+    case 'gemini':
+      return new GeminiAIProvider();
     case 'groq':
       return new GroqAIProvider();
     case 'openai':

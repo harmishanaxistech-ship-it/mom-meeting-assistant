@@ -23,10 +23,17 @@ class GroqTranslationProvider extends TranslationProvider {
     const targetLangName = languageNames[targetLanguage] || targetLanguage;
 
     const prompt = `
-You are an expert translator specializing in professional business documents.
+You are an expert corporate translator specializing in professional business documents.
 Translate the following Minutes of Meeting (MOM) into ${targetLangName}.
-Translate all text content (summary, agenda, discussion points, decisions, tasks, conclusions).
-For action items, translate task and priority (e.g. High -> उच्च / ઉચ્ચ) accurately. Keep person names and dates unchanged.
+
+NATURAL BUSINESS VOCABULARY RULES:
+1. DO NOT use overly pure, difficult, or archaic words in Gujarati or Hindi.
+2. RETAIN common everyday English & corporate terminology (either directly or written phonetically in script):
+   - Example: Keep "Meeting" as "Meeting" / "મીટિંગ" / "मीटिंग" (never obscure words like અધિવેશન or સભા).
+   - Example: Keep words like "Client", "Project", "Deadline", "Team", "Task", "Update", "Feature", "Testing", "Bug", "Follow-up", "Checklist", "Email" natural and recognizable.
+3. Keep person names, dates, and times unchanged.
+4. For action items, translate task and priority clearly.
+5. Preserve paragraph breaks.
 
 Return ONLY valid JSON matching this exact structure with no markdown ticks:
 {
@@ -45,6 +52,7 @@ Return ONLY valid JSON matching this exact structure with no markdown ticks:
   "pendingItems": ["..."],
   "risks": ["..."],
   "nextSteps": ["..."],
+  "otherNotes": ["..."],
   "nextMeeting": {
     "date": "...",
     "time": "..."
@@ -62,6 +70,7 @@ ${JSON.stringify({
   pendingItems: momData.pendingItems,
   risks: momData.risks,
   nextSteps: momData.nextSteps,
+  otherNotes: momData.otherNotes,
   nextMeeting: momData.nextMeeting,
   conclusion: momData.conclusion,
 })}
@@ -95,6 +104,7 @@ ${JSON.stringify({
       pendingItems: parsed.pendingItems || momData.pendingItems,
       risks: parsed.risks || momData.risks,
       nextSteps: parsed.nextSteps || momData.nextSteps,
+      otherNotes: parsed.otherNotes || momData.otherNotes || [],
       nextMeeting: parsed.nextMeeting || momData.nextMeeting,
       conclusion: parsed.conclusion || momData.conclusion,
       language: targetLanguage,
