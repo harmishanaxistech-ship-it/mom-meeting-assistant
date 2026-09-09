@@ -4,11 +4,18 @@ const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const useGroq = (process.env.USE_GROQ || 'false').toLowerCase() === 'true';
+const useLocalDB = (process.env.USE_LOCAL_DB || 'false').toLowerCase() === 'true';
+
+// Determine MongoDB URI based on USE_LOCAL_DB toggle
+const mongodbUri = useLocalDB
+  ? (process.env.MONGODB_LOCAL_URI || 'mongodb://localhost:27017/mom_assistant')
+  : (process.env.MONGODB_LIVE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/mom_assistant');
 
 module.exports = {
   port: parseInt(process.env.PORT, 10) || 5001,
   nodeEnv: process.env.NODE_ENV || 'development',
-  mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/mom_assistant',
+  useLocalDB,
+  mongodbUri,
   jwtSecret: process.env.JWT_SECRET || 'fallback_secret_key_mom_assistant',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   staticUser: {
