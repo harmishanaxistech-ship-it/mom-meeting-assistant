@@ -285,19 +285,58 @@ class DocumentService {
     if (fs.existsSync(templatePath)) {
       await workbook.xlsx.readFile(templatePath);
     } else {
-      const sheet = workbook.addWorksheet('Meetings (MOM)');
-      sheet.addRow(['MOM ID', 'Meeting Date', 'Branch / Location', 'Meeting Title / Subject', 'Meeting Type', 'Venue / Mode', 'Agenda Points', 'Discussion Summary', 'Key Decisions Taken']);
+      workbook.addWorksheet('Meetings (MOM)');
       workbook.addWorksheet('Tasks');
       workbook.addWorksheet('MOM Print');
     }
 
-    // Format MOM ID (e.g. MOM-001 or MOM-XXXX)
     const momId = `MOM-${(meeting._id || '001').toString().slice(-3).toUpperCase()}`;
     const meetingDate = meeting.dateTime ? new Date(meeting.dateTime) : new Date();
+    const actionItems = Array.isArray(mom.actionItems) ? mom.actionItems : [];
+    const attendeesStr = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
 
-    // 1. Populate 'Meetings (MOM)' Sheet
+    const startTimeStr = meeting.dateTime
+      ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '10:00 AM';
+
+    let endTimeStr = '11:00 AM';
+    if (meeting.dateTime && meeting.duration) {
+      const endTime = new Date(new Date(meeting.dateTime).getTime() + meeting.duration * 1000);
+      endTimeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    let agendaText = '';
+    if (Array.isArray(mom.agenda) && mom.agenda.length > 0) {
+      agendaText = mom.agenda.map((item, idx) => `${idx + 1}. ${item}`).join('  ');
+    } else if (typeof mom.agenda === 'string') {
+      agendaText = mom.agenda;
+    }
+
+    let decisionsText = '';
+    if (Array.isArray(mom.decisions) && mom.decisions.length > 0) {
+      decisionsText = mom.decisions.join('; ');
+    } else if (typeof mom.decisions === 'string') {
+      decisionsText = mom.decisions;
+    }
+
+    let nextMeetingDate = null;
+    if (mom.nextMeeting && mom.nextMeeting.date) {
+      const parsedNext = new Date(mom.nextMeeting.date);
+      nextMeetingDate = isNaN(parsedNext.getTime()) ? mom.nextMeeting.date : parsedNext;
+    }
+
+    // ==========================================
+    // 1. POPULATE 'Meetings (MOM)' SHEET
+    // ==========================================
     const momSheet = workbook.getWorksheet('Meetings (MOM)');
     if (momSheet) {
+      // Clear old template dummy rows
+      for (let r = 3; r <= Math.max(momSheet.rowCount, 10); r++) {
+        const dummyRow = momSheet.getRow(r);
+        dummyRow.getCell(1).value = null;
+        dummyRow.commit();
+      }
+
       const momRow = momSheet.getRow(2);
       momRow.getCell(1).value = momId;
       momRow.getCell(2).value = meetingDate;
@@ -305,85 +344,137 @@ class DocumentService {
       momRow.getCell(4).value = meeting.title || 'Meeting';
       momRow.getCell(5).value = meeting.meetingType || 'General Meeting';
       momRow.getCell(6).value = meeting.location || 'Conference Room / Online';
-
-      const startTimeStr = meeting.dateTime
-        ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '10:00 AM';
       momRow.getCell(7).value = startTimeStr;
-
-      let endTimeStr = '11:00 AM';
-      if (meeting.dateTime && meeting.duration) {
-        const endTime = new Date(new Date(meeting.dateTime).getTime() + meeting.duration * 1000);
-        endTimeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
       momRow.getCell(8).value = endTimeStr;
-
       momRow.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
       momRow.getCell(10).value = 'NoteAX AI';
-      momRow.getCell(11).value = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
+      momRow.getCell(11).value = attendeesStr;
       momRow.getCell(12).value = '';
-
-      // Agenda Points
-      let agendaText = '';
-      if (Array.isArray(mom.agenda) && mom.agenda.length > 0) {
-        agendaText = mom.agenda.map((item, idx) => `${idx + 1}. ${item}`).join('  ');
-      } else if (typeof mom.agenda === 'string') {
-        agendaText = mom.agenda;
-      }
       momRow.getCell(13).value = agendaText;
-
-      // Discussion Summary
       momRow.getCell(14).value = mom.meetingSummary || '';
-
-      // Key Decisions Taken
-      let decisionsText = '';
-      if (Array.isArray(mom.decisions) && mom.decisions.length > 0) {
-        decisionsText = mom.decisions.join('; ');
-      } else if (typeof mom.decisions === 'string') {
-        decisionsText = mom.decisions;
-      }
       momRow.getCell(15).value = decisionsText;
-
-      // Next Meeting Date
-      if (mom.nextMeeting && mom.nextMeeting.date) {
-        const parsedNext = new Date(mom.nextMeeting.date);
-        momRow.getCell(16).value = isNaN(parsedNext.getTime()) ? mom.nextMeeting.date : parsedNext;
-      }
-
+      momRow.getCell(16).value = nextMeetingDate;
+      momRow.getCell(17).value = { formula: 'IF($A2="","",COUNTIFS(Tasks!$B$2:$B$501,$A2))', result: actionItems.length };
+      momRow.getCell(18).value = { formula: 'IF($A2="","",COUNTIFS(Tasks!$B$2:$B$501,$A2,Tasks!$L$2:$L$501,"Completed"))', result: 0 };
+      momRow.getCell(19).value = { formula: 'IF($A2="","",$Q2-$R2)', result: actionItems.length };
+      momRow.getCell(20).value = { formula: 'IF($A2="","",SUMIFS(Tasks!$T$2:$T$501,Tasks!$B$2:$B$501,$A2))', result: 0 };
+      momRow.getCell(21).value = { formula: 'IF($A2="","",IF($Q2=0,"",$R2/$Q2))', result: 0 };
       momRow.commit();
     }
 
-    // 2. Populate 'Tasks' Sheet
+    // ==========================================
+    // 2. POPULATE 'Tasks' SHEET
+    // ==========================================
     const taskSheet = workbook.getWorksheet('Tasks');
-    if (taskSheet && Array.isArray(mom.actionItems) && mom.actionItems.length > 0) {
-      mom.actionItems.forEach((act, idx) => {
+    if (taskSheet) {
+      // Clear old template dummy rows
+      const maxRows = Math.max(taskSheet.rowCount, 20);
+      for (let r = 2; r <= maxRows; r++) {
+        if (r >= 2 + actionItems.length) {
+          const emptyRow = taskSheet.getRow(r);
+          for (let c = 1; c <= 20; c++) {
+            emptyRow.getCell(c).value = null;
+          }
+          emptyRow.commit();
+        }
+      }
+
+      actionItems.forEach((act, idx) => {
         const rowNum = 2 + idx;
         const taskRow = taskSheet.getRow(rowNum);
         const taskId = `T-${String(idx + 1).padStart(3, '0')}`;
+        let deadlineVal = meetingDate;
+        if (act.deadline) {
+          const parsed = new Date(act.deadline);
+          deadlineVal = isNaN(parsed.getTime()) ? act.deadline : parsed;
+        }
 
         taskRow.getCell(1).value = taskId;
         taskRow.getCell(2).value = momId;
+        taskRow.getCell(3).value = { formula: `IF($B${rowNum}="","",IFERROR(INDEX('Meetings (MOM)'!$B$2:$B$201,MATCH($B${rowNum},'Meetings (MOM)'!$A$2:$A$201,0)),""))`, result: meetingDate };
+        taskRow.getCell(4).value = { formula: `IF($B${rowNum}="","",IFERROR(INDEX('Meetings (MOM)'!$C$2:$C$201,MATCH($B${rowNum},'Meetings (MOM)'!$A$2:$A$201,0)),""))`, result: meeting.location || 'Head Office' };
         taskRow.getCell(5).value = act.task || '';
         taskRow.getCell(6).value = act.owner || 'Unassigned';
-        taskRow.getCell(7).value = (meeting.participants && meeting.participants[0]) || 'EA / Lead';
+        taskRow.getCell(7).value = (meeting.participants && meeting.participants[0]) || 'EA to Director';
         taskRow.getCell(8).value = act.priority || 'Medium';
         taskRow.getCell(9).value = meetingDate;
-
-        if (act.deadline) {
-          const parsedDate = new Date(act.deadline);
-          taskRow.getCell(10).value = isNaN(parsedDate.getTime()) ? act.deadline : parsedDate;
-        }
-
-        taskRow.getCell(12).value = 'Not Started';
+        taskRow.getCell(10).value = deadlineVal;
+        taskRow.getCell(11).value = null;
+        taskRow.getCell(12).value = act.status || 'Not Started';
         taskRow.getCell(13).value = 0;
+        taskRow.getCell(14).value = null;
+        taskRow.getCell(15).value = { formula: `IF(OR($A${rowNum}="",IF($K${rowNum}="",$J${rowNum},$K${rowNum})=""),"",IF($L${rowNum}="Completed",IF($N${rowNum}="","",$N${rowNum}-IF($K${rowNum}="",$J${rowNum},$K${rowNum})),IF($L${rowNum}="Cancelled","",TODAY()-IF($K${rowNum}="",$J${rowNum},$K${rowNum}))))`, result: 0 };
+        taskRow.getCell(16).value = null;
+        taskRow.getCell(17).value = { formula: `IF($A${rowNum}="","",IF(OR($L${rowNum}="Completed",$L${rowNum}="Cancelled"),"Closed",IF(IF($K${rowNum}="",$J${rowNum},$K${rowNum})="","Set deadline",IF(TODAY()>IF($K${rowNum}="",$J${rowNum},$K${rowNum}),"OVERDUE - Escalate",IF(IF($K${rowNum}="",$J${rowNum},$K${rowNum})-TODAY()<=3,"Send Reminder","On Track")))))`, result: 'On Track' };
+        taskRow.getCell(18).value = null;
+        taskRow.getCell(19).value = { formula: `IF($B${rowNum}="","",$B${rowNum}&"-"&COUNTIFS($B$2:$B${rowNum},$B${rowNum}))`, result: `${momId}-${idx + 1}` };
+        taskRow.getCell(20).value = { formula: `IF($A${rowNum}="",0,IF(OR($L${rowNum}="Completed",$L${rowNum}="Cancelled"),0,IF(IF($K${rowNum}="",$J${rowNum},$K${rowNum})="",0,IF(TODAY()>IF($K${rowNum}="",$J${rowNum},$K${rowNum}),1,0))))`, result: 0 };
         taskRow.commit();
       });
     }
 
-    // 3. Set Active MOM ID in 'MOM Print' Sheet
+    // ==========================================
+    // 3. POPULATE 'MOM Print' SHEET
+    // ==========================================
     const printSheet = workbook.getWorksheet('MOM Print');
     if (printSheet) {
       printSheet.getCell('C4').value = momId;
+
+      printSheet.getCell('C6').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$B$2:$B$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meetingDate };
+      printSheet.getCell('E6').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$C$2:$C$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.location || 'Head Office' };
+      printSheet.getCell('C7').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$D$2:$D$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.title || 'Meeting' };
+      printSheet.getCell('E7').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$E$2:$E$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.meetingType || 'General Meeting' };
+      printSheet.getCell('C8').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$F$2:$F$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.location || 'Conference Room / Online' };
+      printSheet.getCell('E8').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$P$2:$P$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: nextMeetingDate || '' };
+      printSheet.getCell('C9').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$G$2:$G$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: startTimeStr };
+      printSheet.getCell('E9').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$H$2:$H$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: endTimeStr };
+      printSheet.getCell('C10').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$I$2:$I$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: (meeting.participants && meeting.participants[0]) || 'Meeting Lead' };
+      printSheet.getCell('E10').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$J$2:$J$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: 'NoteAX AI' };
+
+      // Narrative Blocks
+      for (let c = 2; c <= 9; c++) {
+        printSheet.getRow(13).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$K$2:$K$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: attendeesStr };
+        printSheet.getRow(15).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$L$2:$L$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: '' };
+        printSheet.getRow(18).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$M$2:$M$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: agendaText };
+        printSheet.getRow(21).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$N$2:$N$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: mom.meetingSummary || '' };
+        printSheet.getRow(24).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$O$2:$O$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: decisionsText };
+      }
+
+      // Action Points Table (Rows 28 to 42)
+      for (let i = 0; i < 15; i++) {
+        const rowNum = 28 + i;
+        const taskRow = printSheet.getRow(rowNum);
+        const act = actionItems[i];
+
+        if (act) {
+          let deadlineVal = meetingDate;
+          if (act.deadline) {
+            const parsed = new Date(act.deadline);
+            deadlineVal = isNaN(parsed.getTime()) ? act.deadline : parsed;
+          }
+          taskRow.getCell(2).value = { formula: `IFERROR(INDEX(Tasks!$A$2:$A$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: `T-${String(i + 1).padStart(3, '0')}` };
+          taskRow.getCell(3).value = { formula: `IFERROR(INDEX(Tasks!$E$2:$E$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.task || '' };
+          taskRow.getCell(4).value = { formula: `IFERROR(INDEX(Tasks!$F$2:$F$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.owner || 'Unassigned' };
+          taskRow.getCell(5).value = { formula: `IFERROR(INDEX(Tasks!$G$2:$G$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: (meeting.participants && meeting.participants[0]) || 'EA to Director' };
+          taskRow.getCell(6).value = { formula: `IFERROR(INDEX(Tasks!$H$2:$H$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.priority || 'Medium' };
+          taskRow.getCell(7).value = { formula: `IFERROR(IF(INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))="",INDEX(Tasks!$J$2:$J$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))),"")`, result: deadlineVal };
+          taskRow.getCell(8).value = { formula: `IFERROR(INDEX(Tasks!$L$2:$L$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.status || 'Not Started' };
+          taskRow.getCell(9).value = { formula: `IFERROR(INDEX(Tasks!$M$2:$M$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: 0 };
+        } else {
+          taskRow.getCell(2).value = { formula: `IFERROR(INDEX(Tasks!$A$2:$A$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(3).value = { formula: `IFERROR(INDEX(Tasks!$E$2:$E$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(4).value = { formula: `IFERROR(INDEX(Tasks!$F$2:$F$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(5).value = { formula: `IFERROR(INDEX(Tasks!$G$2:$G$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(6).value = { formula: `IFERROR(INDEX(Tasks!$H$2:$H$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(7).value = { formula: `IFERROR(IF(INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))="",INDEX(Tasks!$J$2:$J$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))),"")`, result: '' };
+          taskRow.getCell(8).value = { formula: `IFERROR(INDEX(Tasks!$L$2:$L$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(9).value = { formula: `IFERROR(INDEX(Tasks!$M$2:$M$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+        }
+        taskRow.commit();
+      }
+
+      printSheet.getCell('C44').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$J$2:$J$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: 'NoteAX AI' };
+      printSheet.getCell('F44').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$I$2:$I$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: (meeting.participants && meeting.participants[0]) || 'Meeting Lead' };
     }
 
     await workbook.xlsx.writeFile(filePath);
@@ -424,6 +515,38 @@ class DocumentService {
 
     const momId = `MOM-${(meeting._id || '001').toString().slice(-3).toUpperCase()}`;
     const meetingDate = meeting.dateTime ? new Date(meeting.dateTime) : new Date();
+    const actionItems = Array.isArray(mom.actionItems) ? mom.actionItems : [];
+    const attendeesStr = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
+
+    const startTimeStr = meeting.dateTime
+      ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '10:00 AM';
+
+    let endTimeStr = '11:00 AM';
+    if (meeting.dateTime && meeting.duration) {
+      const endTime = new Date(new Date(meeting.dateTime).getTime() + meeting.duration * 1000);
+      endTimeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    let agendaText = '';
+    if (Array.isArray(mom.agenda) && mom.agenda.length > 0) {
+      agendaText = mom.agenda.map((item, idx) => `${idx + 1}. ${item}`).join('  ');
+    } else if (typeof mom.agenda === 'string') {
+      agendaText = mom.agenda;
+    }
+
+    let decisionsText = '';
+    if (Array.isArray(mom.decisions) && mom.decisions.length > 0) {
+      decisionsText = mom.decisions.join('; ');
+    } else if (typeof mom.decisions === 'string') {
+      decisionsText = mom.decisions;
+    }
+
+    let nextMeetingDate = null;
+    if (mom.nextMeeting && mom.nextMeeting.date) {
+      const parsedNext = new Date(mom.nextMeeting.date);
+      nextMeetingDate = isNaN(parsedNext.getTime()) ? mom.nextMeeting.date : parsedNext;
+    }
 
     // 1. Sync to 'Meetings (MOM)' Sheet
     const momSheet = workbook.getWorksheet('Meetings (MOM)');
@@ -449,58 +572,28 @@ class DocumentService {
       row.getCell(4).value = meeting.title || 'Meeting';
       row.getCell(5).value = meeting.meetingType || 'General Meeting';
       row.getCell(6).value = meeting.location || 'Conference Room / Online';
-
-      const startTimeStr = meeting.dateTime
-        ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '10:00 AM';
       row.getCell(7).value = startTimeStr;
-
-      let endTimeStr = '11:00 AM';
-      if (meeting.dateTime && meeting.duration) {
-        const endTime = new Date(new Date(meeting.dateTime).getTime() + meeting.duration * 1000);
-        endTimeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
       row.getCell(8).value = endTimeStr;
-
       row.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
       row.getCell(10).value = 'NoteAX AI';
-      row.getCell(11).value = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
+      row.getCell(11).value = attendeesStr;
       row.getCell(12).value = '';
-
-      let agendaText = '';
-      if (Array.isArray(mom.agenda) && mom.agenda.length > 0) {
-        agendaText = mom.agenda.map((item, idx) => `${idx + 1}. ${item}`).join('  ');
-      } else if (typeof mom.agenda === 'string') {
-        agendaText = mom.agenda;
-      }
       row.getCell(13).value = agendaText;
       row.getCell(14).value = mom.meetingSummary || '';
-
-      let decisionsText = '';
-      if (Array.isArray(mom.decisions) && mom.decisions.length > 0) {
-        decisionsText = mom.decisions.join('; ');
-      } else if (typeof mom.decisions === 'string') {
-        decisionsText = mom.decisions;
-      }
       row.getCell(15).value = decisionsText;
-
-      if (mom.nextMeeting && mom.nextMeeting.date) {
-        const parsedNext = new Date(mom.nextMeeting.date);
-        row.getCell(16).value = isNaN(parsedNext.getTime()) ? mom.nextMeeting.date : parsedNext;
-      }
-
-      row.getCell(17).value = { formula: `IF($A${targetRowIndex}="","",COUNTIFS(Tasks!$B$2:$B$501,$A${targetRowIndex}))` };
-      row.getCell(18).value = { formula: `IF($A${targetRowIndex}="","",COUNTIFS(Tasks!$B$2:$B$501,$A${targetRowIndex},Tasks!$L$2:$L$501,"Completed"))` };
-      row.getCell(19).value = { formula: `IF($A${targetRowIndex}="","",$Q${targetRowIndex}-$R${targetRowIndex})` };
-      row.getCell(20).value = { formula: `IF($A${targetRowIndex}="","",SUMIFS(Tasks!$T$2:$T$501,Tasks!$B$2:$B$501,$A${targetRowIndex}))` };
-      row.getCell(21).value = { formula: `IF($A${targetRowIndex}="","",IF($Q${targetRowIndex}=0,"",$R${targetRowIndex}/$Q${targetRowIndex}))` };
+      row.getCell(16).value = nextMeetingDate;
+      row.getCell(17).value = { formula: `IF($A${targetRowIndex}="","",COUNTIFS(Tasks!$B$2:$B$501,$A${targetRowIndex}))`, result: actionItems.length };
+      row.getCell(18).value = { formula: `IF($A${targetRowIndex}="","",COUNTIFS(Tasks!$B$2:$B$501,$A${targetRowIndex},Tasks!$L$2:$L$501,"Completed"))`, result: 0 };
+      row.getCell(19).value = { formula: `IF($A${targetRowIndex}="","",$Q${targetRowIndex}-$R${targetRowIndex})`, result: actionItems.length };
+      row.getCell(20).value = { formula: `IF($A${targetRowIndex}="","",SUMIFS(Tasks!$T$2:$T$501,Tasks!$B$2:$B$501,$A${targetRowIndex}))`, result: 0 };
+      row.getCell(21).value = { formula: `IF($A${targetRowIndex}="","",IF($Q${targetRowIndex}=0,"",$R${targetRowIndex}/$Q${targetRowIndex}))`, result: 0 };
       row.commit();
     }
 
     // 2. Sync to 'Tasks' Sheet
     const taskSheet = workbook.getWorksheet('Tasks');
-    if (taskSheet && Array.isArray(mom.actionItems) && mom.actionItems.length > 0) {
-      mom.actionItems.forEach((act) => {
+    if (taskSheet && actionItems.length > 0) {
+      actionItems.forEach((act, idx) => {
         let taskRowIndex = -1;
         taskSheet.eachRow((r, rNum) => {
           if (rNum >= 2 && r.getCell(2).value === momId && r.getCell(5).value === act.task) {
@@ -515,30 +608,34 @@ class DocumentService {
           }
         }
 
+        let deadlineVal = meetingDate;
+        if (act.deadline) {
+          const parsed = new Date(act.deadline);
+          deadlineVal = isNaN(parsed.getTime()) ? act.deadline : parsed;
+        }
+
         const taskRow = taskSheet.getRow(taskRowIndex);
         const taskId = `T-${String(taskRowIndex - 1).padStart(3, '0')}`;
         taskRow.getCell(1).value = taskId;
         taskRow.getCell(2).value = momId;
-        taskRow.getCell(3).value = { formula: `IF($B${taskRowIndex}="","",IFERROR(INDEX('Meetings (MOM)'!$B$2:$B$201,MATCH($B${taskRowIndex},'Meetings (MOM)'!$A$2:$A$201,0)),""))` };
-        taskRow.getCell(4).value = { formula: `IF($B${taskRowIndex}="","",IFERROR(INDEX('Meetings (MOM)'!$C$2:$C$201,MATCH($B${taskRowIndex},'Meetings (MOM)'!$A$2:$A$201,0)),""))` };
+        taskRow.getCell(3).value = { formula: `IF($B${taskRowIndex}="","",IFERROR(INDEX('Meetings (MOM)'!$B$2:$B$201,MATCH($B${taskRowIndex},'Meetings (MOM)'!$A$2:$A$201,0)),""))`, result: meetingDate };
+        taskRow.getCell(4).value = { formula: `IF($B${taskRowIndex}="","",IFERROR(INDEX('Meetings (MOM)'!$C$2:$C$201,MATCH($B${taskRowIndex},'Meetings (MOM)'!$A$2:$A$201,0)),""))`, result: meeting.location || 'Head Office' };
         taskRow.getCell(5).value = act.task || '';
         taskRow.getCell(6).value = act.owner || 'Unassigned';
         taskRow.getCell(7).value = (meeting.participants && meeting.participants[0]) || 'EA to Director';
         taskRow.getCell(8).value = act.priority || 'Medium';
         taskRow.getCell(9).value = meetingDate;
-
-        if (act.deadline) {
-          const parsedDate = new Date(act.deadline);
-          taskRow.getCell(10).value = isNaN(parsedDate.getTime()) ? act.deadline : parsedDate;
-        }
-
-        taskRow.getCell(12).value = 'Not Started';
+        taskRow.getCell(10).value = deadlineVal;
+        taskRow.getCell(11).value = null;
+        taskRow.getCell(12).value = act.status || 'Not Started';
         taskRow.getCell(13).value = 0;
-        taskRow.getCell(15).value = { formula: `IF(OR($A${taskRowIndex}="",IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})=""),"",IF($L${taskRowIndex}="Completed",IF($N${taskRowIndex}="","",$N${taskRowIndex}-IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})),IF($L${taskRowIndex}="Cancelled","",TODAY()-IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}))))` };
-        taskRow.getCell(17).value = { formula: `IF($A${taskRowIndex}="","",IF(OR($L${taskRowIndex}="Completed",$L${taskRowIndex}="Cancelled"),"Closed",IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})="","Set deadline",IF(TODAY()>IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}),"OVERDUE - Escalate",IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})-TODAY()<=3,"Send Reminder","On Track")))))` };
-        taskRow.getCell(18).value = '';
-        taskRow.getCell(19).value = { formula: `IF($B${taskRowIndex}="","",$B${taskRowIndex}&"-"&COUNTIFS($B$2:$B${taskRowIndex},$B${taskRowIndex}))` };
-        taskRow.getCell(20).value = { formula: `IF($A${taskRowIndex}="",0,IF(OR($L${taskRowIndex}="Completed",$L${taskRowIndex}="Cancelled"),0,IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})="",0,IF(TODAY()>IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}),1,0))))` };
+        taskRow.getCell(14).value = null;
+        taskRow.getCell(15).value = { formula: `IF(OR($A${taskRowIndex}="",IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})=""),"",IF($L${taskRowIndex}="Completed",IF($N${taskRowIndex}="","",$N${taskRowIndex}-IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})),IF($L${taskRowIndex}="Cancelled","",TODAY()-IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}))))`, result: 0 };
+        taskRow.getCell(16).value = null;
+        taskRow.getCell(17).value = { formula: `IF($A${taskRowIndex}="","",IF(OR($L${taskRowIndex}="Completed",$L${taskRowIndex}="Cancelled"),"Closed",IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})="","Set deadline",IF(TODAY()>IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}),"OVERDUE - Escalate",IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})-TODAY()<=3,"Send Reminder","On Track")))))`, result: 'On Track' };
+        taskRow.getCell(18).value = null;
+        taskRow.getCell(19).value = { formula: `IF($B${taskRowIndex}="","",$B${taskRowIndex}&"-"&COUNTIFS($B$2:$B${taskRowIndex},$B${taskRowIndex}))`, result: `${momId}-${idx + 1}` };
+        taskRow.getCell(20).value = { formula: `IF($A${taskRowIndex}="",0,IF(OR($L${taskRowIndex}="Completed",$L${taskRowIndex}="Cancelled"),0,IF(IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex})="",0,IF(TODAY()>IF($K${taskRowIndex}="",$J${taskRowIndex},$K${taskRowIndex}),1,0))))`, result: 0 };
         taskRow.commit();
       });
     }
@@ -547,6 +644,62 @@ class DocumentService {
     const printSheet = workbook.getWorksheet('MOM Print');
     if (printSheet) {
       printSheet.getCell('C4').value = momId;
+
+      printSheet.getCell('C6').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$B$2:$B$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meetingDate };
+      printSheet.getCell('E6').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$C$2:$C$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.location || 'Head Office' };
+      printSheet.getCell('C7').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$D$2:$D$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.title || 'Meeting' };
+      printSheet.getCell('E7').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$E$2:$E$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.meetingType || 'General Meeting' };
+      printSheet.getCell('C8').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$F$2:$F$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: meeting.location || 'Conference Room / Online' };
+      printSheet.getCell('E8').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$P$2:$P$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: nextMeetingDate || '' };
+      printSheet.getCell('C9').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$G$2:$G$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: startTimeStr };
+      printSheet.getCell('E9').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$H$2:$H$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: endTimeStr };
+      printSheet.getCell('C10').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$I$2:$I$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: (meeting.participants && meeting.participants[0]) || 'Meeting Lead' };
+      printSheet.getCell('E10').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$J$2:$J$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: 'NoteAX AI' };
+
+      // Narrative Blocks
+      for (let c = 2; c <= 9; c++) {
+        printSheet.getRow(13).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$K$2:$K$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: attendeesStr };
+        printSheet.getRow(15).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$L$2:$L$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: '' };
+        printSheet.getRow(18).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$M$2:$M$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: agendaText };
+        printSheet.getRow(21).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$N$2:$N$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: mom.meetingSummary || '' };
+        printSheet.getRow(24).getCell(c).value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$O$2:$O$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: decisionsText };
+      }
+
+      // Action Points Table (Rows 28 to 42)
+      for (let i = 0; i < 15; i++) {
+        const rowNum = 28 + i;
+        const taskRow = printSheet.getRow(rowNum);
+        const act = actionItems[i];
+
+        if (act) {
+          let deadlineVal = meetingDate;
+          if (act.deadline) {
+            const parsed = new Date(act.deadline);
+            deadlineVal = isNaN(parsed.getTime()) ? act.deadline : parsed;
+          }
+          taskRow.getCell(2).value = { formula: `IFERROR(INDEX(Tasks!$A$2:$A$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: `T-${String(i + 1).padStart(3, '0')}` };
+          taskRow.getCell(3).value = { formula: `IFERROR(INDEX(Tasks!$E$2:$E$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.task || '' };
+          taskRow.getCell(4).value = { formula: `IFERROR(INDEX(Tasks!$F$2:$F$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.owner || 'Unassigned' };
+          taskRow.getCell(5).value = { formula: `IFERROR(INDEX(Tasks!$G$2:$G$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: (meeting.participants && meeting.participants[0]) || 'EA to Director' };
+          taskRow.getCell(6).value = { formula: `IFERROR(INDEX(Tasks!$H$2:$H$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.priority || 'Medium' };
+          taskRow.getCell(7).value = { formula: `IFERROR(IF(INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))="",INDEX(Tasks!$J$2:$J$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))),"")`, result: deadlineVal };
+          taskRow.getCell(8).value = { formula: `IFERROR(INDEX(Tasks!$L$2:$L$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: act.status || 'Not Started' };
+          taskRow.getCell(9).value = { formula: `IFERROR(INDEX(Tasks!$M$2:$M$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: 0 };
+        } else {
+          taskRow.getCell(2).value = { formula: `IFERROR(INDEX(Tasks!$A$2:$A$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(3).value = { formula: `IFERROR(INDEX(Tasks!$E$2:$E$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(4).value = { formula: `IFERROR(INDEX(Tasks!$F$2:$F$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(5).value = { formula: `IFERROR(INDEX(Tasks!$G$2:$G$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(6).value = { formula: `IFERROR(INDEX(Tasks!$H$2:$H$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(7).value = { formula: `IFERROR(IF(INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))="",INDEX(Tasks!$J$2:$J$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),INDEX(Tasks!$K$2:$K$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0))),"")`, result: '' };
+          taskRow.getCell(8).value = { formula: `IFERROR(INDEX(Tasks!$L$2:$L$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+          taskRow.getCell(9).value = { formula: `IFERROR(INDEX(Tasks!$M$2:$M$501,MATCH($C$4&"-"&${i + 1},Tasks!$S$2:$S$501,0)),"")`, result: '' };
+        }
+        taskRow.commit();
+      }
+
+      printSheet.getCell('C44').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$J$2:$J$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: 'NoteAX AI' };
+      printSheet.getCell('F44').value = { formula: "IFERROR(INDEX('Meetings (MOM)'!$I$2:$I$201,MATCH($C$4,'Meetings (MOM)'!$A$2:$A$201,0)),\"\")", result: (meeting.participants && meeting.participants[0]) || 'Meeting Lead' };
     }
 
     await workbook.xlsx.writeFile(masterPath);
