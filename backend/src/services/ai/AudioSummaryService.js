@@ -27,48 +27,82 @@ class AudioSummaryService {
     let specificLangInstructions = '';
     if (language === 'hi') {
       specificLangInstructions = `
-- Write in modern, conversational business Hindi (सहज और व्यावहारिक कॉर्पोरेट हिंदी).
-- DO NOT use overly complex, archaic, or bookish Sanskritized words.
-- Use regular, widely spoken corporate terms (e.g., 'मीटिंग' instead of 'अधिवेशन', 'क्लाइंट', 'प्रोजेक्ट', 'डेडलाइन', 'टास्क', 'अपडेट', 'टीम', 'डिस्कशन').
-- Tone: Crisp, confident, clear, and engaging like a modern podcast or executive audio presenter.`;
+- Write in modern, natural conversational "Hinglish" / Corporate Hindi (रोजमर्रा की व्यावहारिक बिज़नेस हिंदी).
+- DO NOT use pure, formal, ancient, or bookish Sanskrit Hindi words (e.g. NEVER use 'अधिवेशन', 'प्रतिभागियों', 'दायित्व', 'कार्यवाही', 'कार्यान्वयन', 'निष्कर्ष').
+- FREELY use common English corporate words in Devanagari script (e.g. 'मीटिंग', 'डिस्कशन', 'प्रोजेक्ट', 'क्लाइंट', 'टीम', 'डेडलाइन', 'टास्क', 'अपडेट', 'फीडबैक', 'डिसीजन', 'प्लान', 'इश्यू', 'सॉल्यूशन', 'नेक्स्ट स्टेप्स', 'रिव्यू', 'स्टेटस', 'फॉलो-अप').
+- Tone: High-level executive summary, very crisp, natural, like a modern CXO briefing podcast.`;
     } else if (language === 'gu') {
       specificLangInstructions = `
-- Write in modern, natural, conversational business Gujarati (સરળ અને વ્યવહારુ ગુજરાતી).
-- DO NOT use overly pure, difficult, or archaic words (e.g., use 'મીટિંગ' instead of 'સભા/અધિવેશન', use 'ક્લાયન્ટ', 'પ્રોજેક્ટ', 'ડેડલાઇન', 'ટાસ્ક', 'અપડેટ', 'ટીમ', 'ચર્ચા').
-- Tone: Warm, clear, friendly, and professional like a modern corporate podcast narrator.`;
+- Write in natural, modern conversational Gujarati / "Gujlish" (રોજિંદી વ્યવહારુ બિઝનેસ ગુજરાતી).
+- DO NOT use difficult, textbook, or overly formal Gujarati words (e.g. NEVER use 'અધિવેશન', 'સભાજનો', 'કામગીરી સંભાળનાર', 'સમાપન').
+- FREELY use common English business terms in Gujarati script (e.g. 'મીટિંગ', 'ડિસ્કશન', 'પ્રોજેક્ટ', 'ક્લાયન્ટ', 'ટીમ', 'ડેડલાઇન', 'ટાસ્ક', 'અપડેટ', 'ફીડબેક', 'ડિસિઝન', 'પ્લાન', 'ઇશ્યૂ', 'સોલ્યુશન', 'નેક્સ્ટ સ્ટેપ્સ', 'રિવ્યૂ', 'સ્ટેટસ', 'ફોલો-અપ').
+- Tone: High-level executive briefing, warm, friendly, clear, and professional.`;
     } else {
       specificLangInstructions = `
-- Write in natural, executive-grade conversational English.
-- Clear, punchy, high-impact business tone.`;
+- Write in high-level executive English.
+- Clear, punchy, conversational, and direct business tone without corporate jargon.`;
     }
 
-    const prompt = `You are an executive audio briefing producer.
-Transform the following Minutes of Meeting (MOM) into a concise, engaging spoken audio briefing in ${targetLang}.
+    const meetingType = mom.meetingType || 'General Meeting';
 
-LENGTH REQUIREMENTS:
-- Exactly 150 to 230 words (ideal for 1 to 1.5 minutes of spoken playback).
-- Clear, punchy, high-impact tone.
+    // Dynamic customization based on meeting type:
+    let meetingTypeContext = '';
+    if (meetingType === 'Client Meeting') {
+      meetingTypeContext = `
+- This is a CLIENT MEETING.
+- Focus heavily on client requirements, deliverables agreed upon, expectations set, feedback received, and next review/demo milestones.`;
+    } else if (meetingType === 'Project Review') {
+      meetingTypeContext = `
+- This is a PROJECT REVIEW MEETING.
+- Focus on project progress against targets, blockers/challenges identified, engineering/design decisions made, and upcoming sprint or release deadlines.`;
+    } else if (meetingType === 'Team Meeting') {
+      meetingTypeContext = `
+- This is an INTERNAL TEAM MEETING / SYNC.
+- Focus on team alignment, key work updates, cross-functional dependencies, task ownership, and priority items for the week.`;
+    } else if (meetingType === 'Planning Meeting') {
+      meetingTypeContext = `
+- This is a STRATEGIC PLANNING / SPRINT PLANNING MEETING.
+- Focus on strategic goals, roadmap priorities, resource allocation, key decisions on scope, and planned milestones.`;
+    } else {
+      meetingTypeContext = `
+- Focus on high-level outcomes, primary topics discussed, key decisions made, and follow-up action items.`;
+    }
 
-KEY CONTENT TO COVER:
-1. One-sentence opening: meeting title, main objective.
-2. 2-3 sentences covering the core topics and critical discussions.
-3. Key decisions made.
-4. Top action items with assignees and deadlines.
-5. Final wrap-up and immediate next milestone.
+    const prompt = `You are a top-tier Executive Meeting Briefing Producer.
+Create a high-level, clear, and engaging spoken audio summary (1 to 1.5 minutes) tailored specifically for this ${meetingType.toUpperCase()} in ${targetLang}.
+
+OBJECTIVE:
+- Provide an intelligent, high-level summary that compares and connects the meeting's agenda/type with what was actually accomplished.
+- Frame the summary from the perspective of an executive briefing: Why was this meeting held, what major conclusions were reached, and what are the critical next moves?
+
+${meetingTypeContext}
+
+LENGTH:
+- Exactly 150 to 220 words (ideal for 1 to 1.5 minutes of spoken audio playback).
+
+STRUCTURE OF THE BRIEFING:
+1. Executive Hook & Context: State the meeting purpose and type in 1-2 smooth, punchy sentences.
+2. High-Level Accomplishments & Discussions: Synthesize the 2-3 most critical points discussed (avoid reading bullet lists mechanically; synthesize the insights).
+3. Core Decisions & Strategic Agreements: Clearly state the key decisions agreed upon by the team/clients.
+4. Action Items & Accountability: Highlight the most crucial tasks with their respective owners and deadlines in natural narrative flow.
+5. Forward-Looking Wrap-Up: Conclude with the immediate next milestone or upcoming checkpoint.
 
 LANGUAGE & VOICE RULES:
 ${specificLangInstructions}
-- Write as continuous spoken prose for a voiceover narrator.
-- DO NOT include markdown formatting, bold marks (**), bullet characters, numbered lists (1, 2), asterisks (*), or timestamps.
-- Make every sentence flow naturally when spoken aloud.
+- Write as smooth, continuous spoken prose for a voice narrator.
+- DO NOT include markdown formatting, bold marks (**), asterisks (*), bullets, numbered lists (1., 2.), or brackets.
+- Every sentence must sound natural, polished, and effortless when spoken aloud.
 
-MOM DATA:
-Title: ${mom.title || 'Meeting Summary'}
+MEETING DETAILS:
+Meeting Title: ${mom.title || 'Meeting Summary'}
+Meeting Type: ${meetingType}
+Agenda / Objective: ${mom.agenda || 'General Review & Strategy'}
+Participants: ${Array.isArray(mom.participants) && mom.participants.length > 0 ? mom.participants.join(', ') : 'Team members'}
 Executive Summary: ${mom.meetingSummary || ''}
-Key Points: ${(mom.keyDiscussionPoints || []).slice(0, 8).join('; ')}
-Decisions: ${(mom.decisions || []).join('; ')}
-Action Items: ${(mom.actionItems || []).map((a) => `${a.task} assigned to ${a.owner || 'team'}`).join('; ')}
-Next Steps: ${(mom.nextSteps || []).join('; ')}
+Key Discussions: ${(mom.keyDiscussionPoints || []).slice(0, 8).join('; ')}
+Key Decisions: ${(mom.decisions || []).join('; ')}
+Action Items: ${(mom.actionItems || []).map((a) => `${a.task} (${a.owner || 'team'} by ${a.deadline || 'upcoming'})`).join('; ')}
+Next Steps & Milestones: ${(mom.nextSteps || []).join('; ')}
 
 Return ONLY the spoken narrative text.`;
 

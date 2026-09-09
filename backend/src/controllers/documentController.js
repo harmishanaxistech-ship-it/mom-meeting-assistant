@@ -61,8 +61,17 @@ const generateDocument = async (req, res, next) => {
     let docResult;
     if (format.toLowerCase() === 'docx') {
       docResult = await documentService.generateDOCX(meeting, momToExport, language);
+    } else if (format.toLowerCase() === 'xlsx') {
+      docResult = await documentService.generateXLSX(meeting, momToExport, language);
     } else {
       docResult = await documentService.generatePDF(meeting, momToExport, language);
+    }
+
+    let mimeType = 'application/pdf';
+    if (format.toLowerCase() === 'docx') {
+      mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else if (format.toLowerCase() === 'xlsx') {
+      mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     }
 
     // Save document reference in MongoDB
@@ -74,10 +83,7 @@ const generateDocument = async (req, res, next) => {
       filePath: docResult.filePath,
       fileName: docResult.fileName,
       fileSize: docResult.fileSize,
-      mimeType:
-        format.toLowerCase() === 'docx'
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : 'application/pdf',
+      mimeType,
     });
 
     res.status(201).json({

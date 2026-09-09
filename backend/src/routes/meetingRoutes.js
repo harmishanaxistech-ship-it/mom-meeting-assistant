@@ -116,11 +116,42 @@ router.put('/:id/mom', async (req, res, next) => {
     mom.translations = new Map();
     await mom.save();
 
+    // Sync updated MOM to Master Excel Tracker
+    try {
+      const documentService = require('../services/document/DocumentService');
+      const meeting = await require('../models/Meeting').findById(req.params.id);
+      if (meeting) {
+        await documentService.syncToMasterTracker(meeting, mom);
+      }
+    } catch (excelErr) {
+      console.error('[MOM Update] Master Excel sync error:', excelErr.message);
+    }
+
     res.status(200).json({
       success: true,
       message: 'MOM updated and saved successfully',
       data: { mom },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Master Excel Workbook Tracker Download Endpoint
+router.get('/export/master-excel', async (req, res, next) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const env = require('../config/env');
+    const masterPath = path.join(env.upload.dir, 'MOM_Master_Tracker.xlsx');
+    const promptsMasterPath = path.resolve(__dirname, '../../../prompts/MOM_Master_Tracker.xlsx');
+
+    const filePath = fs.existsSync(masterPath) ? masterPath : promptsMasterPath;
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: 'Master Excel Tracker not found' });
+    }
+
+    res.download(filePath, 'MOM_Master_Tracker.xlsx');
   } catch (error) {
     next(error);
   }
@@ -157,6 +188,10 @@ router.post('/:id/audio-summary', async (req, res, next) => {
     const momPayload = {
       ...mom.toObject(),
       title: meeting?.title || 'Meeting',
+      meetingType: meeting?.meetingType || 'General Meeting',
+      location: meeting?.location || '',
+      participants: meeting?.participants || [],
+      agenda: meeting?.agenda || mom.agenda || '',
     };
     const script = await audioSummaryService.generateScript(momPayload, language);
 
