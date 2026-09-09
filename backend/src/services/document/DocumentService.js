@@ -319,7 +319,7 @@ class DocumentService {
       momRow.getCell(8).value = endTimeStr;
 
       momRow.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
-      momRow.getCell(10).value = 'MOM Assistant';
+      momRow.getCell(10).value = 'NoteAX AI';
       momRow.getCell(11).value = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
       momRow.getCell(12).value = '';
 
@@ -463,7 +463,7 @@ class DocumentService {
       row.getCell(8).value = endTimeStr;
 
       row.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
-      row.getCell(10).value = 'MOM Assistant';
+      row.getCell(10).value = 'NoteAX AI';
       row.getCell(11).value = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
       row.getCell(12).value = '';
 

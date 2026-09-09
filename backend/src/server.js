@@ -14,7 +14,7 @@ const startServer = async () => {
 
   const server = app.listen(env.port, () => {
     console.log(
-      `🚀 MOM Meeting Assistant Server running in ${env.nodeEnv} mode on port ${env.port}`
+      `🚀 NoteAX Server running in ${env.nodeEnv} mode on port ${env.port}`
     );
   });
 

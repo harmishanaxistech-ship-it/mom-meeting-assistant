@@ -24,13 +24,13 @@ void main() async {
 
   runApp(
     const ProviderScope(
-      child: MinuteCraftApp(),
+      child: NoteAXApp(),
     ),
   );
 }
 
-class MinuteCraftApp extends ConsumerWidget {
-  const MinuteCraftApp({super.key});
+class NoteAXApp extends ConsumerWidget {
+  const NoteAXApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
