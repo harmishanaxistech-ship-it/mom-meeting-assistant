@@ -1,7 +1,7 @@
 {
-  "name": "mom-assistant-backend",
+  "name": "noteax-backend",
   "version": "1.0.0",
-  "description": "Backend API for MOM Meeting Assistant",
+  "description": "Backend API for NoteAX AI Executive Meeting Studio",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
