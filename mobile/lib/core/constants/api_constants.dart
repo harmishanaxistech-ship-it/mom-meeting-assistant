@@ -1,6 +1,14 @@
 class ApiConstants {
-  // Active Cloudflare HTTPS Tunnel (Works everywhere on Wi-Fi & 4G/5G mobile data)
-  static const String serverBaseUrl = 'https://same-inspiration-dim-show.trycloudflare.com';
+  // --- Local Testing Backend URLs ---
+  // Direct USB connection (via adb reverse):
+  static const String serverBaseUrl = 'http://127.0.0.1:5001';
+  // Wi-Fi Local IP:
+  // static const String serverBaseUrl = 'http://192.168.1.18:5001';
+  // Use 10.0.2.2 for Android Studio Emulator:
+  // static const String serverBaseUrl = 'http://10.0.2.2:5001';
+  // Use Live Server:
+  // static const String serverBaseUrl = 'https://noteaxapi.anaxistech.com';
+
   static const String baseUrl = '$serverBaseUrl/api';
 
   static const String login = '/auth/login';

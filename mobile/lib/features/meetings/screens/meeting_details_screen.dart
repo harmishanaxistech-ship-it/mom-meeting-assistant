@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/audio_player_widget.dart';
+import '../../../core/services/local_audio_service.dart';
 import '../controllers/meeting_controller.dart';
 import '../models/meeting_model.dart';
 import '../../recording/screens/recording_screen.dart';
@@ -22,11 +23,24 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
   Meeting? _meeting;
   Map<String, dynamic>? _momData;
   bool _isLoading = true;
+  String? _localAudioPath;
 
   @override
   void initState() {
     super.initState();
     _fetchDetails();
+    _findLocalAudio();
+  }
+
+  Future<void> _findLocalAudio() async {
+    try {
+      final path = await LocalAudioService.getLocalAudioPath(widget.meetingId);
+      if (mounted && path != null) {
+        setState(() {
+          _localAudioPath = path;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchDetails() async {
@@ -39,6 +53,7 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
           _momData = response['mom'] as Map<String, dynamic>?;
           _isLoading = false;
         });
+        _findLocalAudio();
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
@@ -203,7 +218,13 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
     final statusLabel = _getStatusLabel(meeting.status);
     final currentStep = _getCurrentStep(meeting.status);
     final isCompleted = meeting.status.toLowerCase() == 'completed' || _momData != null;
-    final hasAudio = meeting.audioFileName != null && meeting.audioFileName!.isNotEmpty;
+    final hasAudio = _localAudioPath != null ||
+        (meeting.audioFileName != null && meeting.audioFileName!.isNotEmpty) ||
+        meeting.duration > 0;
+    final audioSource = _localAudioPath ??
+        ((meeting.audioFileName != null && meeting.audioFileName!.isNotEmpty)
+            ? '${ApiConstants.serverBaseUrl}/uploads/${meeting.audioFileName}'
+            : '');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -627,10 +648,51 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    AudioPlayerWidget(
-                      audioUrl: '${ApiConstants.serverBaseUrl}/uploads/${meeting.audioFileName}',
-                      title: meeting.title,
-                    ),
+                    if (audioSource.isNotEmpty)
+                      AudioPlayerWidget(
+                        audioUrl: audioSource,
+                        title: meeting.title,
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.cloud_done_rounded, color: Color(0xFF10B981), size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Audio Transcribed & Processed',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    meeting.duration > 0
+                                        ? 'Duration: ${(meeting.duration / 60).toStringAsFixed(1)} min • Audio removed from server to optimize space'
+                                        : 'Audio removed from server to optimize space • Full transcript available',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),

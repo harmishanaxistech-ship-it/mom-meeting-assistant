@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
@@ -33,11 +34,32 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   Future<void> _initAudio() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-      await _player.setUrl(widget.audioUrl);
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
+
+      final uri = widget.audioUrl.trim();
+      if (uri.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'No audio source available';
+          });
+        }
+        return;
+      }
+
+      if (uri.startsWith('http://') || uri.startsWith('https://')) {
+        await _player.setUrl(uri);
+      } else if (File(uri).existsSync()) {
+        await _player.setFilePath(uri);
+      } else {
+        await _player.setUrl(uri);
+      }
+
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -47,10 +69,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Could not load audio stream';
+          _errorMessage = 'Audio removed from server to optimize space';
         });
       }
-      debugPrint('Error loading audio from ${widget.audioUrl}: $e');
+      debugPrint('Note: Audio stream not available (${widget.audioUrl}): $e');
     }
   }
 

@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/audio_player_widget.dart';
+import '../../../core/services/local_audio_service.dart';
 import '../../documents/screens/export_document_screen.dart';
 
 class MOMScreen extends ConsumerStatefulWidget {
@@ -21,6 +22,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
   String _meetingTitle = 'Minutes of Meeting';
   String _selectedLanguage = 'en';
   String? _audioFileName;
+  String? _localAudioPath;
   bool _isTranslating = false;
   bool _isSaving = false;
 
@@ -74,9 +76,21 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     super.dispose();
   }
 
+  Future<void> _findLocalAudio() async {
+    try {
+      final path = await LocalAudioService.getLocalAudioPath(widget.meetingId);
+      if (mounted && path != null) {
+        setState(() {
+          _localAudioPath = path;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _fetchMOM() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
+    _findLocalAudio();
     try {
       final client = ApiClient();
       final res = await client.dio.get('${ApiConstants.meetings}/${widget.meetingId}');
@@ -829,10 +843,10 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                       const SizedBox(height: 14),
 
                       // Embedded Meeting Audio Player
-                      if (_audioFileName != null && _audioFileName!.isNotEmpty) ...[
+                      if (_localAudioPath != null || (_audioFileName != null && _audioFileName!.isNotEmpty)) ...[
                         AudioPlayerWidget(
-                          audioUrl: '${ApiConstants.serverBaseUrl}/uploads/$_audioFileName',
-                          title: _meetingTitle,
+                          audioUrl: _localAudioPath ?? '${ApiConstants.serverBaseUrl}/uploads/$_audioFileName',
+                          title: 'Original Recording - $_meetingTitle',
                         ),
                         const SizedBox(height: 14),
                       ],

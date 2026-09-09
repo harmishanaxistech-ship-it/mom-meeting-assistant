@@ -1,3 +1,4 @@
+const fs = require('fs');
 const Meeting = require('../models/Meeting');
 const Transcript = require('../models/Transcript');
 const MOM = require('../models/MOM');
@@ -171,7 +172,19 @@ const deleteMeeting = async (req, res, next) => {
       });
     }
 
-    // Clean up associated resources
+    // Clean up associated resources in database
+    const documents = await Document.find({ meetingId: req.params.id });
+
+    // Clean up files from disk
+    if (meeting.audioFile?.path && fs.existsSync(meeting.audioFile.path)) {
+      try { fs.unlinkSync(meeting.audioFile.path); } catch (_) {}
+    }
+    for (const doc of documents) {
+      if (doc.filePath && fs.existsSync(doc.filePath)) {
+        try { fs.unlinkSync(doc.filePath); } catch (_) {}
+      }
+    }
+
     await Promise.all([
       Transcript.deleteMany({ meetingId: req.params.id }),
       MOM.deleteMany({ meetingId: req.params.id }),

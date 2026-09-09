@@ -249,6 +249,20 @@ const processMeeting = async (req, res, next) => {
           { upsert: true, returnDocument: 'after' }
         );
 
+        // ✅ Clean up original uploaded audio file immediately after transcription to save server disk space
+        if (audioPath && fs.existsSync(audioPath)) {
+          try {
+            fs.unlinkSync(audioPath);
+            console.log(`[STT] Deleted temporary audio file from server: ${audioPath}`);
+          } catch (cleanErr) {
+            console.warn(`[STT] Could not remove audio file ${audioPath}:`, cleanErr.message);
+          }
+        }
+        if (meeting.audioFile) {
+          meeting.audioFile.filename = undefined;
+          meeting.audioFile.path = undefined;
+        }
+
         // Stage 2: STT complete, start AI analysis
         job.stages.speechRecognition = { completed: true, completedAt: new Date() };
         job.stages.speakerIdentification = { completed: true, completedAt: new Date() };
@@ -342,6 +356,11 @@ const processMeeting = async (req, res, next) => {
         console.log(`[Process] Meeting ${meeting._id} processed successfully.`);
       } catch (bgError) {
         console.error(`[Process] Background error for meeting ${meeting._id}:`, bgError.message);
+        // Ensure audio file is deleted on error too to save disk space
+        const errAudioPath = meeting.audioFile?.path;
+        if (errAudioPath && fs.existsSync(errAudioPath)) {
+          try { fs.unlinkSync(errAudioPath); } catch (_) {}
+        }
         await Meeting.findByIdAndUpdate(meeting._id, { status: 'failed' });
         await ProcessingJob.findOneAndUpdate(
           { meetingId: meeting._id },

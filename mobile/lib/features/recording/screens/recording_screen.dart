@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:record/record.dart';
 import '../../../core/theme/app_theme.dart';
@@ -13,6 +12,7 @@ import '../../meetings/controllers/meeting_controller.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/background_processing_service.dart';
+import '../../../core/services/local_audio_service.dart';
 
 class RecordingScreen extends ConsumerStatefulWidget {
   final Meeting meeting;
@@ -69,9 +69,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
-        final dir = await getApplicationDocumentsDirectory();
-        final filePath =
-            '${dir.path}/recording_${widget.meeting.id}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        final filePath = await LocalAudioService.getTargetAudioPath(widget.meeting.id, ext: 'm4a');
 
         await _audioRecorder.start(
           const RecordConfig(
@@ -254,8 +252,11 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
         return;
       }
 
+      // Persist picked audio file into NoteAX local directory
+      final persistentPath = await LocalAudioService.persistMeetingAudio(widget.meeting.id, path);
+
       setState(() {
-        _recordedFilePath = path;
+        _recordedFilePath = persistentPath;
         _pickedFileName = name;
         if (audioDuration != null) {
           _recordDurationSeconds = audioDuration.inSeconds;
