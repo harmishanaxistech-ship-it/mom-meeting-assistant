@@ -313,15 +313,20 @@ const processMeeting = async (req, res, next) => {
               mimeType: 'application/pdf',
               updatedAt: new Date(),
             },
-          // Automatically sync meeting & tasks into central Master Excel Tracker
-          try {
-            await documentService.syncToMasterTracker(meeting, savedMOM);
-            console.log(`[Process] Synced meeting ${meeting._id} to Master Excel Tracker`);
-          } catch (excelErr) {
-            console.error(`[Process] Failed to sync meeting ${meeting._id} to Master Excel:`, excelErr.message);
-          }
+            { upsert: true }
+          );
+          console.log(`[Process] Pre-generated PDF for meeting ${meeting._id}`);
         } catch (pdfErr) {
           console.error(`[Process] Failed to auto-generate PDF for meeting ${meeting._id}:`, pdfErr.message);
+        }
+
+        // Automatically sync meeting & tasks into central Master Excel Tracker
+        try {
+          const documentService = require('../services/document/DocumentService');
+          await documentService.syncToMasterTracker(meeting, savedMOM);
+          console.log(`[Process] Synced meeting ${meeting._id} to Master Excel Tracker`);
+        } catch (excelErr) {
+          console.error(`[Process] Failed to sync meeting ${meeting._id} to Master Excel:`, excelErr.message);
         }
 
         // Stage 4: Complete
