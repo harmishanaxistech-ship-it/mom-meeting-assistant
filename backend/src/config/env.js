@@ -1,7 +1,20 @@
 const dotenv = require('dotenv');
 const path = require('path');
+const fs = require('fs');
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Check and load .env from root directory, current working directory, or backend directory
+const possibleEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '../../../.env'),
+];
+
+for (const envPath of possibleEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
 
 const useGroq = (process.env.USE_GROQ || 'false').toLowerCase() === 'true';
 const useLocalDB = (process.env.USE_LOCAL_DB || 'false').toLowerCase() === 'true';
