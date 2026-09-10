@@ -201,10 +201,134 @@ const deleteMeeting = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Regenerate MOM for a meeting using existing transcript
+ * @route   POST /api/meetings/:id/regenerate-mom
+ * @access  Private
+ */
+const regenerateMOM = async (req, res, next) => {
+  try {
+    const meeting = await Meeting.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!meeting) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meeting not found',
+      });
+    }
+
+    const transcript = await Transcript.findOne({ meetingId: meeting._id });
+    if (!transcript || !transcript.rawText || transcript.rawText.trim().length < 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid transcript found for this meeting to regenerate MOM from.',
+      });
+    }
+
+    const { getAIProvider } = require('../services/providerFactory');
+    const aiProvider = getAIProvider();
+
+    // Past context for continuity
+    const pastMeetings = await Meeting.find({
+      userId: meeting.userId,
+      status: 'completed',
+      _id: { $ne: meeting._id },
+    })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .select('_id title dateTime participants');
+
+    let pastContext = [];
+    for (const pm of pastMeetings) {
+      const pastMom = await MOM.findOne({ meetingId: pm._id }).select('meetingSummary actionItems');
+      if (pastMom) {
+        pastContext.push({
+          title: pm.title,
+          participants: pm.participants,
+          summary: pastMom.meetingSummary,
+          actionItems: pastMom.actionItems,
+        });
+      }
+    }
+
+    const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext });
+
+    // Check if error summary was returned
+    if (momData.meetingSummary && momData.meetingSummary.toLowerCase().includes('gemini error')) {
+      return res.status(503).json({
+        success: false,
+        error: momData.meetingSummary,
+      });
+    }
+
+    const savedMOM = await MOM.findOneAndUpdate(
+      { meetingId: meeting._id },
+      {
+        meetingId: meeting._id,
+        ...momData,
+        language: 'en',
+        isEditedByUser: false,
+        translations: new Map(),
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    // Update meeting status if needed
+    if (meeting.status !== 'completed') {
+      meeting.status = 'completed';
+      await meeting.save();
+    }
+
+    // Auto update pre-generated PDF
+    try {
+      const documentService = require('../services/document/DocumentService');
+      const Document = require('../models/Document');
+      const pdfResult = await documentService.generatePDF(meeting, savedMOM, 'en');
+      await Document.findOneAndUpdate(
+        { meetingId: meeting._id, format: 'pdf' },
+        {
+          meetingId: meeting._id,
+          momId: savedMOM._id,
+          format: 'pdf',
+          language: 'en',
+          filePath: pdfResult.filePath,
+          fileName: pdfResult.fileName,
+          fileSize: pdfResult.fileSize,
+          mimeType: 'application/pdf',
+          updatedAt: new Date(),
+        },
+        { upsert: true }
+      );
+    } catch (pdfErr) {
+      console.error(`[Regenerate MOM] Failed to update PDF for meeting ${meeting._id}:`, pdfErr.message);
+    }
+
+    // Auto sync to Master Excel Tracker
+    try {
+      const documentService = require('../services/document/DocumentService');
+      await documentService.syncToMasterTracker(meeting, savedMOM);
+    } catch (excelErr) {
+      console.error(`[Regenerate MOM] Failed to sync to Master Excel:`, excelErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'MOM regenerated successfully',
+      data: { mom: savedMOM },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createMeeting,
   getMeetings,
   getMeetingById,
   updateMeeting,
   deleteMeeting,
+  regenerateMOM,
 };

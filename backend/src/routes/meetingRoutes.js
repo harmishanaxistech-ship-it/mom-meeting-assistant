@@ -8,6 +8,7 @@ const {
   getMeetingById,
   updateMeeting,
   deleteMeeting,
+  regenerateMOM,
 } = require('../controllers/meetingController');
 const {
   upload,
@@ -29,6 +30,7 @@ router.route('/:id').get(getMeetingById).put(updateMeeting).delete(deleteMeeting
 // Recording & Processing Endpoints (Section 28)
 router.post('/:id/upload', upload.single('audio'), uploadAudio);
 router.post('/:id/process', processMeeting);
+router.post('/:id/regenerate-mom', regenerateMOM);
 router.get('/:id/processing-status', getProcessingStatus);
 
 // Multilingual Translation Endpoint with Caching

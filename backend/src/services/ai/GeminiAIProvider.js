@@ -13,34 +13,49 @@ class GeminiAIProvider extends AIProvider {
   }
 
   /**
-   * Retry wrapper with exponential back-off for 503 / overloaded errors.
-   * Attempts up to maxRetries times before throwing.
+   * Retry wrapper with exponential back-off and model fallback for 503 / overloaded errors.
    */
   async _retryGenerate(prompt, maxRetries = 3) {
+    const candidateModels = [
+      this.model || 'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ];
+    // Remove duplicate model names
+    const modelsToTry = [...new Set(candidateModels)];
+
     let lastErr;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await this.ai.models.generateContent({
-          model: this.model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-          },
-        });
-        return response.text;
-      } catch (err) {
-        lastErr = err;
-        const isOverload =
-          err.message?.includes('503') ||
-          err.message?.toLowerCase().includes('overload') ||
-          err.message?.toLowerCase().includes('unavailable');
-        if (isOverload && attempt < maxRetries) {
-          const waitMs = 1500 * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
-          console.warn(`[Gemini AI] Model overloaded (attempt ${attempt}/${maxRetries}). Retrying in ${waitMs}ms...`);
-          await new Promise((r) => setTimeout(r, waitMs));
-        } else {
-          throw err;
+    for (const currentModel of modelsToTry) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await this.ai.models.generateContent({
+            model: currentModel,
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          });
+          return response.text;
+        } catch (err) {
+          lastErr = err;
+          const isOverload =
+            err.message?.includes('503') ||
+            err.message?.toLowerCase().includes('overload') ||
+            err.message?.toLowerCase().includes('unavailable') ||
+            err.message?.toLowerCase().includes('high demand') ||
+            err.message?.toLowerCase().includes('resource_exhausted');
+
+          if (isOverload && attempt < maxRetries) {
+            const waitMs = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+            console.warn(`[Gemini AI] Model ${currentModel} overloaded (attempt ${attempt}/${maxRetries}). Retrying in ${waitMs}ms...`);
+            await new Promise((r) => setTimeout(r, waitMs));
+          } else if (isOverload) {
+            console.warn(`[Gemini AI] Model ${currentModel} failed after ${maxRetries} attempts. Trying fallback model...`);
+            break; // Break inner loop to try next fallback model
+          } else {
+            throw err;
+          }
         }
       }
     }
