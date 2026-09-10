@@ -45,6 +45,34 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   void initState() {
     super.initState();
     _audioRecorder = AudioRecorder();
+    _checkExistingAudio();
+  }
+
+  Future<void> _checkExistingAudio() async {
+    try {
+      final localPath = await LocalAudioService.getLocalAudioPath(widget.meeting.id);
+      if (localPath != null && File(localPath).existsSync()) {
+        final file = File(localPath);
+        final tempPlayer = AudioPlayer();
+        Duration? duration;
+        try {
+          duration = await tempPlayer.setFilePath(localPath);
+        } catch (_) {}
+        await tempPlayer.dispose();
+
+        if (mounted) {
+          setState(() {
+            _recordedFilePath = localPath;
+            _pickedFileName = file.uri.pathSegments.last;
+            if (duration != null && duration.inSeconds > 0) {
+              _recordDurationSeconds = duration.inSeconds;
+            } else if (widget.meeting.duration > 0) {
+              _recordDurationSeconds = widget.meeting.duration;
+            }
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1536,8 +1564,73 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   }
 
   Widget _buildActionOptions() {
+    final hasAudioReady = _recordedFilePath != null && File(_recordedFilePath!).existsSync();
+
     return Column(
       children: [
+        // If an audio file is already recorded or selected, show Generate / Retry MOM CTA prominently
+        if (hasAudioReady) ...[
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _uploadAndProcessMeeting,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF10B981), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withAlpha(70),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+                    SizedBox(width: 10),
+                    Text(
+                      'Retry / Generate MOM from Audio',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  'OR RECORD / CHOOSE NEW AUDIO',
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
+
         // Primary Record Button
         Material(
           color: Colors.transparent,
@@ -1559,14 +1652,14 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                   ),
                 ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.mic_rounded, color: Colors.white, size: 22),
-                  SizedBox(width: 10),
+                  const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
+                  const SizedBox(width: 10),
                   Text(
-                    'Start Recording Microphone',
-                    style: TextStyle(
+                    hasAudioReady ? 'Record New Audio' : 'Start Recording Microphone',
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
@@ -1581,25 +1674,27 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
         const SizedBox(height: 14),
 
         // Modern OR Divider
-        Row(
-          children: [
-            Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Text(
-                'OR CHOOSE AUDIO FILE',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
+        if (!hasAudioReady) ...[
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  'OR CHOOSE AUDIO FILE',
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
-            ),
-            Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
-          ],
-        ),
-        const SizedBox(height: 14),
+              Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
 
         // Secondary Upload Button
         Material(

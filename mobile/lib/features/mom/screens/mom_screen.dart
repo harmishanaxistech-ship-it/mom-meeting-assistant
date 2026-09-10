@@ -38,6 +38,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
 
   // 1-2 min Spoken Audio Summary State
   bool _isGeneratingAudioSummary = false;
+  bool _isRegeneratingMom = false;
   String _audioSummaryLanguage = 'en';
   Map<String, dynamic>? _currentAudioSummary;
 
@@ -369,6 +370,151 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     } finally {
       if (mounted) setState(() => _isTranslating = false);
     }
+  }
+
+  bool get _hasMomError {
+    final summary = _summaryController.text.toLowerCase();
+    return summary.contains('gemini error') ||
+        summary.contains('unavailable') ||
+        summary.contains('503') ||
+        summary.contains('spikes in demand') ||
+        summary.contains('experiencing high demand') ||
+        (summary.startsWith('error') && _discussionControllers.isEmpty && _actionItems.isEmpty);
+  }
+
+  Future<void> _regenerateMOM() async {
+    if (_isRegeneratingMom) return;
+    setState(() => _isRegeneratingMom = true);
+
+    try {
+      final client = ApiClient();
+      final res = await client.dio.post(
+        '${ApiConstants.meetings}/${widget.meetingId}/regenerate-mom',
+      );
+
+      if (res.data['success'] == true && mounted) {
+        final mom = res.data['data']['mom'];
+        if (mom != null) {
+          _populateControllers(mom);
+          setState(() {
+            _mom = mom;
+            _selectedLanguage = 'en';
+            _currentAudioSummary = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('MOM regenerated successfully with AI!'),
+              backgroundColor: AppTheme.accentColor,
+            ),
+          );
+        }
+      } else {
+        throw Exception(res.data['error'] ?? 'Regeneration failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        String msg = e.toString();
+        if (msg.contains('503') || msg.contains('high demand') || msg.contains('UNAVAILABLE')) {
+          msg = 'Gemini AI is currently busy. Please tap Regenerate again in a few seconds.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRegeneratingMom = false);
+    }
+  }
+
+  Widget _buildErrorBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFECACA), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFDC2626).withAlpha(15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEE2E2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'AI Generation Incomplete / 503 Spike',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF991B1B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'The AI model experienced a temporary spike in traffic while generating these Minutes of Meeting. Tap below to regenerate full structured MOM instantly.',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF7F1D1D),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+              onPressed: _isRegeneratingMom ? null : _regenerateMOM,
+              icon: _isRegeneratingMom
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded, size: 20),
+              label: Text(
+                _isRegeneratingMom ? 'Regenerating MOM...' : 'Regenerate MOM with AI',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirmDelete(String itemTitle, {String? previewText}) async {
@@ -792,6 +938,33 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
               },
             ),
           ),
+          if (!_isLoading) ...[
+            const SizedBox(width: 4),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF475569)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onSelected: (val) {
+                if (val == 'regenerate') {
+                  _regenerateMOM();
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'regenerate',
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, color: AppTheme.primaryColor, size: 18),
+                      SizedBox(width: 10),
+                      Text(
+                        'Regenerate MOM (AI)',
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(width: 12),
         ],
       ),
@@ -838,6 +1011,11 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Prominent Error Banner if Gemini AI failed or spiked
+                      if (_hasMomError) ...[
+                        _buildErrorBanner(),
+                      ],
+
                       // Meeting Header Banner Card
                       _buildMeetingHeroCard(),
                       const SizedBox(height: 14),
@@ -1216,8 +1394,8 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEFF6FF),
                                 shape: BoxShape.circle,
                               ),
                               child: const CircularProgressIndicator(
@@ -1238,6 +1416,63 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                             const SizedBox(height: 6),
                             const Text(
                               'Preserving context & bullet structure',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Global MOM Regeneration Loader Overlay
+                if (_isRegeneratingMom)
+                  Container(
+                    color: Colors.black.withAlpha(70),
+                    child: Center(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(40),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEFF6FF),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const CircularProgressIndicator(
+                                color: AppTheme.primaryColor,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Regenerating MOM with AI...',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Analyzing discussion, actions, and decisions',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.textSecondary,

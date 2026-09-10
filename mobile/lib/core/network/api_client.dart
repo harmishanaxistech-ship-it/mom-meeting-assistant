@@ -30,21 +30,40 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-          if (kDebugMode) {
-            print('[HTTP Request] ${options.method} ${options.uri}');
+          print('\n🚀 [HTTP Request] ────────────────────────────');
+          print('URL: [${options.method}] ${options.uri}');
+          print('Headers: ${options.headers}');
+          if (options.data is FormData) {
+            final formData = options.data as FormData;
+            final fields = formData.fields.map((e) => '${e.key}: ${e.value}').toList();
+            final files = formData.files.map((e) => '${e.key}: ${e.value.filename} (${e.value.length} bytes)').toList();
+            print('FormData Fields: $fields');
+            print('FormData Files: $files');
+          } else if (options.data != null) {
+            print('Body: ${options.data}');
           }
+          if (options.queryParameters.isNotEmpty) {
+            print('Query: ${options.queryParameters}');
+          }
+          print('────────────────────────────────────────────\n');
           return handler.next(options);
         },
         onResponse: (response, handler) {
-          if (kDebugMode) {
-            print('[HTTP Response] ${response.statusCode} ${response.requestOptions.uri}');
-          }
+          print('\n✅ [HTTP Response] ───────────────────────────');
+          print('Status: ${response.statusCode} | URL: [${response.requestOptions.method}] ${response.requestOptions.uri}');
+          print('Data: ${response.data}');
+          print('────────────────────────────────────────────\n');
           return handler.next(response);
         },
         onError: (DioException error, handler) {
-          if (kDebugMode) {
-            print('[HTTP Error] ${error.response?.statusCode}: ${error.message}');
+          print('\n❌ [HTTP Error] ─────────────────────────────');
+          print('Status: ${error.response?.statusCode}');
+          print('URL: [${error.requestOptions.method}] ${error.requestOptions.uri}');
+          print('Message: ${error.message}');
+          if (error.response?.data != null) {
+            print('Response Body: ${error.response?.data}');
           }
+          print('────────────────────────────────────────────\n');
           return handler.next(error);
         },
       ),
