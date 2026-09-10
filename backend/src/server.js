@@ -10,7 +10,7 @@ if (!fs.existsSync(env.upload.dir)) {
 
 // Start Server
 const startServer = async () => {
-  await connectDB();
+  await connectDB().then(() => require('./utils/seedTeam')());
 
   const server = app.listen(env.port, () => {
     console.log(

@@ -58,6 +58,47 @@ class NotificationService {
     _isInitialized = true;
   }
 
+  Future<void> showProgressNotification({
+    required String meetingId,
+    required String meetingTitle,
+    required int progress,
+    required String status,
+  }) async {
+    await initialize();
+
+    final androidDetails = AndroidNotificationDetails(
+      'mom_processing_channel_progress',
+      'Meeting Processing Progress',
+      channelDescription: 'Ongoing progress of meeting analysis',
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: true,
+      maxProgress: 100,
+      progress: progress,
+      icon: '@mipmap/ic_launcher',
+      color: const Color(0xFF1E3A8A),
+      ongoing: progress < 100, // Keep ongoing until 100%
+      onlyAlertOnce: true, // Don't buzz on every percentage update
+    );
+
+    final notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(
+        presentAlert: false, // Don't interrupt repeatedly on iOS
+      ),
+    );
+
+    final notificationId = meetingId.hashCode.abs() % 100000;
+
+    await _notificationsPlugin.show(
+      id: notificationId,
+      title: 'Processing: $meetingTitle',
+      body: '$progress% • $status',
+      notificationDetails: notificationDetails,
+      payload: meetingId,
+    );
+  }
+
   Future<void> showProcessingCompletedNotification({
     required String meetingId,
     required String meetingTitle,

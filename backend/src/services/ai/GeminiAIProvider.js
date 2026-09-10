@@ -125,6 +125,7 @@ MARKET-STANDARD MOM GUIDELINES:
    - "owner": Assign ONLY to an individual explicitly tasked or volunteered in the transcript (using their exact name from the VERIFIED PARTICIPANTS LIST). If unassigned or group-oriented, assign to "Team".
    - "deadline": Mention exact deadline/timeline if spoken (e.g., "End of week", "15th October", "Next sprint"), otherwise "TBD".
    - "priority": Assign "High" for blockers/critical path, "Medium" for regular deliverables, "Low" for exploratory tasks.
+   - "status": Evaluate the conversation and assign the CURRENT status of the task. Must be exactly one of: "Not Started", "In Progress", "Pending", "Delayed", or "Completed". If a task was discussed as being behind schedule or blocked, mark it "Delayed" or "Pending".
 
 6. COMPREHENSIVE EXECUTIVE SUMMARY:
    - Structure into distinct, cohesive paragraphs:
@@ -164,7 +165,8 @@ Respond strictly with valid JSON (no markdown fences, no explanatory text):
       "task": "Actionable task starting with an action verb with full context",
       "owner": "Exact verified participant name IF explicitly assigned, otherwise 'Team'",
       "deadline": "Spoken timeframe / date or 'TBD'",
-      "priority": "High | Medium | Low"
+      "priority": "High | Medium | Low",
+      "status": "Not Started | In Progress | Pending | Delayed | Completed"
     }
   ],
   "pendingItems": [
@@ -257,6 +259,7 @@ INSTRUCTIONS:
               owner: normalizeName(item.owner),
               deadline: item.deadline || 'TBD',
               priority: ['High', 'Medium', 'Low'].includes(item.priority) ? item.priority : 'Medium',
+              status: ['Not Started', 'In Progress', 'Pending', 'Delayed', 'Completed'].includes(item.status) ? item.status : 'Not Started',
             }))
           : [],
         pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],

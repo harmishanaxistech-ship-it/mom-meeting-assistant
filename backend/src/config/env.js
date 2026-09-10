@@ -50,6 +50,7 @@ module.exports = {
     ai: useGroq ? process.env.GROQ_API_KEY : (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || ''),
     translation: useGroq ? process.env.GROQ_API_KEY : (process.env.TRANSLATION_API_KEY || process.env.OPENAI_API_KEY || ''),
   },
+  teamMembers: (process.env.TEAM_MEMBERS || '').split(',').map(name => name.trim()).filter(name => name.length > 0),
   upload: {
     dir: path.resolve(__dirname, '../../', process.env.UPLOAD_DIR || 'uploads'),
     maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 150,

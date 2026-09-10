@@ -151,7 +151,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         if (!matchTitle && !matchAgenda && !matchType) return false;
       }
       return true;
-    }).toList();
+    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),

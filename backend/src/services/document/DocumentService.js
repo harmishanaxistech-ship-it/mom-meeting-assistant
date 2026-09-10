@@ -19,7 +19,7 @@ class DocumentService {
    * @returns {Promise<{ filePath: string, fileName: string, fileSize: number }>}
    */
   async generatePDF(meeting, mom, targetLanguage = 'en') {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
         const fileName = `MOM_${meeting._id}_${Date.now()}.pdf`;
         const filePath = path.join(env.upload.dir, fileName);
@@ -45,6 +45,15 @@ class DocumentService {
         if (meeting.location) doc.text(`Location: ${meeting.location}`);
         if (meeting.participants && meeting.participants.length > 0) {
           doc.text(`Participants: ${meeting.participants.join(', ')}`);
+          const TeamMember = require('../../models/TeamMember');
+          const teamDocs = await TeamMember.find();
+          const teamNames = teamDocs.map(d => d.name);
+          const absenteesList = teamNames.filter(member => 
+            !meeting.participants.some(attendee => attendee.toLowerCase() === member.toLowerCase())
+          );
+          if (absenteesList.length > 0) {
+            doc.text(`Absent: ${absenteesList.join(', ')}`);
+          }
         }
         doc.moveDown(1);
 
@@ -147,6 +156,10 @@ class DocumentService {
     const fileName = `MOM_${meeting._id}_${Date.now()}.docx`;
     const filePath = path.join(env.upload.dir, fileName);
 
+    const TeamMember = require('../../models/TeamMember');
+    const teamDocs = await TeamMember.find();
+    const teamNames = teamDocs.map(d => d.name);
+
     const docChildren = [
       new Paragraph({
         text: 'MINUTES OF MEETING',
@@ -162,6 +175,20 @@ class DocumentService {
           new TextRun({ text: ` | Date: ${new Date(meeting.dateTime).toLocaleString()}` }),
         ],
       }),
+      new Paragraph({
+        children: [
+          new TextRun({ text: 'Participants: ', bold: true }),
+          new TextRun({ text: (meeting.participants && meeting.participants.length > 0) ? meeting.participants.join(', ') : 'None' }),
+        ],
+      }),
+      ...(teamNames.filter(member => !(meeting.participants || []).some(attendee => attendee.toLowerCase() === member.toLowerCase())).length > 0
+        ? [new Paragraph({
+            children: [
+              new TextRun({ text: 'Absent: ', bold: true }),
+              new TextRun({ text: teamNames.filter(member => !(meeting.participants || []).some(attendee => attendee.toLowerCase() === member.toLowerCase())).join(', ') }),
+            ],
+          })]
+        : []),
       new Paragraph({ text: '' }),
       new Paragraph({
         text: '1. Executive Summary',
@@ -293,7 +320,15 @@ class DocumentService {
     const momId = `MOM-${(meeting._id || '001').toString().slice(-3).toUpperCase()}`;
     const meetingDate = meeting.dateTime ? new Date(meeting.dateTime) : new Date();
     const actionItems = Array.isArray(mom.actionItems) ? mom.actionItems : [];
-    const attendeesStr = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
+    const attendeesList = Array.isArray(meeting.participants) ? meeting.participants : [];
+    const attendeesStr = attendeesList.join(', ');
+    const TeamMember = require('../../models/TeamMember');
+    const teamDocs = await TeamMember.find();
+    const teamNames = teamDocs.map(d => d.name);
+    const absenteesList = teamNames.filter(member => 
+      !attendeesList.some(attendee => attendee.toLowerCase() === member.toLowerCase())
+    );
+    const absenteesStr = absenteesList.join(', ');
 
     const startTimeStr = meeting.dateTime
       ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -349,7 +384,7 @@ class DocumentService {
       momRow.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
       momRow.getCell(10).value = 'NoteAX AI';
       momRow.getCell(11).value = attendeesStr;
-      momRow.getCell(12).value = '';
+      momRow.getCell(12).value = absenteesStr;
       momRow.getCell(13).value = agendaText;
       momRow.getCell(14).value = mom.meetingSummary || '';
       momRow.getCell(15).value = decisionsText;
@@ -516,7 +551,15 @@ class DocumentService {
     const momId = `MOM-${(meeting._id || '001').toString().slice(-3).toUpperCase()}`;
     const meetingDate = meeting.dateTime ? new Date(meeting.dateTime) : new Date();
     const actionItems = Array.isArray(mom.actionItems) ? mom.actionItems : [];
-    const attendeesStr = Array.isArray(meeting.participants) ? meeting.participants.join(', ') : '';
+    const attendeesList = Array.isArray(meeting.participants) ? meeting.participants : [];
+    const attendeesStr = attendeesList.join(', ');
+    const TeamMember = require('../../models/TeamMember');
+    const teamDocs = await TeamMember.find();
+    const teamNames = teamDocs.map(d => d.name);
+    const absenteesList = teamNames.filter(member => 
+      !attendeesList.some(attendee => attendee.toLowerCase() === member.toLowerCase())
+    );
+    const absenteesStr = absenteesList.join(', ');
 
     const startTimeStr = meeting.dateTime
       ? new Date(meeting.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -577,7 +620,7 @@ class DocumentService {
       row.getCell(9).value = (meeting.participants && meeting.participants[0]) || 'Meeting Lead';
       row.getCell(10).value = 'NoteAX AI';
       row.getCell(11).value = attendeesStr;
-      row.getCell(12).value = '';
+      row.getCell(12).value = absenteesStr;
       row.getCell(13).value = agendaText;
       row.getCell(14).value = mom.meetingSummary || '';
       row.getCell(15).value = decisionsText;

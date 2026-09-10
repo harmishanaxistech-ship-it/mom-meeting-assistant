@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/audio_player_widget.dart';
 import '../../../core/services/local_audio_service.dart';
+import '../../../core/network/api_client.dart';
 import '../controllers/meeting_controller.dart';
 import '../models/meeting_model.dart';
 import '../../recording/screens/recording_screen.dart';
@@ -25,11 +27,21 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
   bool _isLoading = true;
   String? _localAudioPath;
 
+  Timer? _pollingTimer;
+  int _progressPercent = 10;
+  String _progressStage = '';
+
   @override
   void initState() {
     super.initState();
     _fetchDetails();
     _findLocalAudio();
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _findLocalAudio() async {
@@ -43,6 +55,31 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
     } catch (_) {}
   }
 
+  void _startPolling() {
+    if (_pollingTimer != null && _pollingTimer!.isActive) return;
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+      try {
+        final client = ApiClient();
+        final res = await client.dio.get('${ApiConstants.meetings}/${widget.meetingId}/processing-status');
+        if (res.data['success'] == true && mounted) {
+          final data = res.data['data'];
+          setState(() {
+            _progressPercent = data['progressPercentage'] ?? _progressPercent;
+            _progressStage = data['stageDescription'] ?? _progressStage;
+            if (_meeting != null) {
+              _meeting = _meeting!.copyWith(status: data['meetingStatus'] ?? _meeting!.status);
+            }
+          });
+          
+          if (data['currentStage'] == 'completed' || data['meetingStatus'] == 'completed' || data['meetingStatus'] == 'failed') {
+            timer.cancel();
+            _fetchDetails(); // Fetch final MOM data
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
   Future<void> _fetchDetails() async {
     try {
       final repo = ref.read(meetingRepositoryProvider);
@@ -54,6 +91,11 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
           _isLoading = false;
         });
         _findLocalAudio();
+        
+        final status = _meeting?.status.toLowerCase() ?? '';
+        if (status != 'completed' && status != 'failed' && status != 'scheduled') {
+          _startPolling();
+        }
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
@@ -437,7 +479,9 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
                             Icon(statusIcon, size: 14, color: Colors.white),
                             const SizedBox(width: 4),
                             Text(
-                              statusLabel,
+                              meeting.status.toLowerCase() == 'completed' || meeting.status.toLowerCase() == 'failed' || meeting.status.toLowerCase() == 'scheduled' 
+                                ? statusLabel 
+                                : '$statusLabel ($_progressPercent%)',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 11.5,
@@ -530,6 +574,37 @@ class _MeetingDetailsScreenState extends ConsumerState<MeetingDetailsScreen> {
                       _buildStepItem('MOM Ready', 3, currentStep, Icons.assignment_turned_in),
                     ],
                   ),
+                  if (currentStep > 0 && currentStep < 3) ...[
+                    const SizedBox(height: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _progressStage.isNotEmpty ? _progressStage : 'AI Analysis in progress...',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            ),
+                            Text(
+                              '$_progressPercent%',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: _progressPercent / 100,
+                            backgroundColor: const Color(0xFFE2E8F0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                            minHeight: 6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

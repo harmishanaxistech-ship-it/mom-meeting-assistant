@@ -104,6 +104,17 @@ class BackgroundProcessingService {
               );
 
               _ref?.read(meetingControllerProvider.notifier).fetchMeetings();
+            } else {
+              // Ongoing progress notification
+              final progress = data['progressPercentage'] as int? ?? 10;
+              final stageDesc = data['stageDescription'] as String? ?? 'Processing...';
+              
+              await NotificationService().showProgressNotification(
+                meetingId: id,
+                meetingTitle: task.meetingTitle,
+                progress: progress,
+                status: stageDesc,
+              );
             }
           }
         } catch (_) {

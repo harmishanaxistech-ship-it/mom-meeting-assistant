@@ -59,7 +59,7 @@ const getMeetings = async (req, res, next) => {
     if (status) query.status = status;
     if (meetingType) query.meetingType = meetingType;
 
-    const meetings = await Meeting.find(query).sort({ dateTime: -1, createdAt: -1 });
+    const meetings = await Meeting.find(query).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,

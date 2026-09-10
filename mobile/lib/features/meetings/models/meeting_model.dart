@@ -31,7 +31,7 @@ class Meeting {
       title: json['title'] ?? 'Untitled Meeting',
       meetingType: json['meetingType'] ?? 'General Meeting',
       dateTime: json['dateTime'] != null
-          ? DateTime.tryParse(json['dateTime']) ?? DateTime.now()
+          ? (DateTime.tryParse(json['dateTime'])?.toLocal() ?? DateTime.now())
           : DateTime.now(),
       location: json['location'] ?? '',
       participants: (json['participants'] as List<dynamic>?)
@@ -42,7 +42,7 @@ class Meeting {
       duration: json['duration'] ?? 0,
       status: json['status'] ?? 'created',
       createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt']) ?? DateTime.now()
+          ? (DateTime.tryParse(json['createdAt'])?.toLocal() ?? DateTime.now())
           : DateTime.now(),
       audioFileName: json['audioFile']?['filename'],
     );
@@ -66,5 +66,33 @@ class Meeting {
     final minutes = (duration % 3600) ~/ 60;
     final seconds = duration % 60;
     return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Meeting copyWith({
+    String? id,
+    String? title,
+    String? meetingType,
+    DateTime? dateTime,
+    String? location,
+    List<String>? participants,
+    String? agenda,
+    int? duration,
+    String? status,
+    DateTime? createdAt,
+    String? audioFileName,
+  }) {
+    return Meeting(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      meetingType: meetingType ?? this.meetingType,
+      dateTime: dateTime ?? this.dateTime,
+      location: location ?? this.location,
+      participants: participants ?? this.participants,
+      agenda: agenda ?? this.agenda,
+      duration: duration ?? this.duration,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      audioFileName: audioFileName ?? this.audioFileName,
+    );
   }
 }

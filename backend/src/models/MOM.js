@@ -20,6 +20,11 @@ const actionItemSchema = new mongoose.Schema({
     type: String,
     default: 'Medium',
   },
+  status: {
+    type: String,
+    enum: ['Not Started', 'In Progress', 'Pending', 'Delayed', 'Completed'],
+    default: 'Not Started',
+  },
 });
 
 const momSchema = new mongoose.Schema(

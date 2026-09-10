@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -181,6 +184,56 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
       }
     } finally {
       if (mounted) setState(() => _isGeneratingAudioSummary = false);
+    }
+  }
+
+  Future<String?> _downloadAudioSummaryLocally() async {
+    if (_currentAudioSummary == null || (_currentAudioSummary!['audioUrl'] ?? '').isEmpty) return null;
+    try {
+      setState(() => _isSaving = true);
+      final String url = '${ApiConstants.serverBaseUrl}${_currentAudioSummary!['audioUrl']}';
+      final String fileName = _currentAudioSummary!['audioUrl'].split('/').last;
+      final tempDir = await getTemporaryDirectory();
+      final savePath = '${tempDir.path}/$fileName';
+      
+      final client = ApiClient();
+      await client.dio.download(url, savePath);
+      return savePath;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to download audio: $e'), backgroundColor: Colors.red));
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _shareAudioSummary() async {
+    final path = await _downloadAudioSummaryLocally();
+    if (path != null) {
+      final xFile = XFile(path);
+      await Share.shareXFiles([xFile], text: 'Executive Briefing - $_meetingTitle');
+    }
+  }
+
+  Future<void> _saveAudioSummary() async {
+    final path = await _downloadAudioSummaryLocally();
+    if (path != null) {
+      final docDir = await getApplicationDocumentsDirectory();
+      final fileName = path.split('/').last;
+      final newPath = '${docDir.path}/$fileName';
+      await File(path).copy(newPath);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Audio saved to Documents folder!'),
+            backgroundColor: AppTheme.primaryColor,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -812,6 +865,28 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                     }
                   },
                 ),
+                const SizedBox(height: 14),
+                const Text('Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  initialValue: existingItem?['status'] ?? 'Not Started',
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Not Started', child: Text('Not Started ⚪')),
+                    DropdownMenuItem(value: 'In Progress', child: Text('In Progress 🔵')),
+                    DropdownMenuItem(value: 'Pending', child: Text('Pending 🟠')),
+                    DropdownMenuItem(value: 'Delayed', child: Text('Delayed 🔴')),
+                    DropdownMenuItem(value: 'Completed', child: Text('Completed 🟢')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() => existingItem = {...?existingItem, 'status': val});
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -833,6 +908,7 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                   'owner': ownerCtrl.text.trim(),
                   'deadline': deadlineCtrl.text.trim(),
                   'priority': priority,
+                  'status': existingItem?['status'] ?? 'Not Started',
                 };
                 setState(() {
                   if (index != null) {
@@ -1249,6 +1325,33 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                                                   Text(
                                                     item['deadline'],
                                                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          if ((item['status'] ?? '').isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: item['status'] == 'Completed' ? const Color(0xFFDCFCE7) : item['status'] == 'Delayed' ? const Color(0xFFFEE2E2) : item['status'] == 'In Progress' ? const Color(0xFFDBEAFE) : const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    item['status'] == 'Completed' ? Icons.check_circle_outline : item['status'] == 'Delayed' ? Icons.warning_amber_rounded : item['status'] == 'In Progress' ? Icons.run_circle_outlined : Icons.info_outline_rounded,
+                                                    size: 13, 
+                                                    color: item['status'] == 'Completed' ? const Color(0xFF16A34A) : item['status'] == 'Delayed' ? const Color(0xFFDC2626) : item['status'] == 'In Progress' ? const Color(0xFF2563EB) : const Color(0xFF475569)
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    item['status'],
+                                                    style: TextStyle(
+                                                      fontSize: 11.5, 
+                                                      fontWeight: FontWeight.w600, 
+                                                      color: item['status'] == 'Completed' ? const Color(0xFF16A34A) : item['status'] == 'Delayed' ? const Color(0xFFDC2626) : item['status'] == 'In Progress' ? const Color(0xFF2563EB) : const Color(0xFF475569)
+                                                    ),
                                                   ),
                                                 ],
                                               ),
@@ -1846,29 +1949,63 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                         ],
                       ),
                     ),
-                    InkWell(
-                      onTap: _isGeneratingAudioSummary
-                          ? null
-                          : () => _fetchOrGenerateAudioSummary(_audioSummaryLanguage, forceRegenerate: true),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.replay_rounded, size: 14, color: Color(0xFF94A3B8)),
-                            SizedBox(width: 4),
-                            Text(
-                              'Regenerate',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8),
-                              ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_isSaving)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 12),
+                            child: SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF94A3B8)),
                             ),
-                          ],
+                          )
+                        else ...[
+                          InkWell(
+                            onTap: _shareAudioSummary,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              child: const Icon(Icons.share_rounded, size: 16, color: Color(0xFF94A3B8)),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: _saveAudioSummary,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              child: const Icon(Icons.download_rounded, size: 16, color: Color(0xFF94A3B8)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        InkWell(
+                          onTap: _isGeneratingAudioSummary
+                              ? null
+                              : () => _fetchOrGenerateAudioSummary(_audioSummaryLanguage, forceRegenerate: true),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.replay_rounded, size: 14, color: Color(0xFF94A3B8)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Regenerate',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),

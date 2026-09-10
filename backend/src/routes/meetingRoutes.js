@@ -25,6 +25,17 @@ const { protect } = require('../middleware/auth');
 router.use(protect);
 
 router.route('/').post(createMeeting).get(getMeetings);
+
+router.get('/settings/team-members', async (req, res, next) => {
+  try {
+    const TeamMember = require('../models/TeamMember');
+    const members = await TeamMember.find().sort({ name: 1 });
+    res.status(200).json({ success: true, data: members.map(m => m.name) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.route('/:id').get(getMeetingById).put(updateMeeting).delete(deleteMeeting);
 
 // Recording & Processing Endpoints (Section 28)
