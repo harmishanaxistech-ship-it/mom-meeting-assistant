@@ -1,4 +1,4 @@
-package com.momassistant.mobile
+package com.noteax.anaxistech
 
 import io.flutter.embedding.android.FlutterActivity
 

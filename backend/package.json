@@ -27,12 +27,12 @@
     "edge-tts-node": "^1.5.7",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "firebase-admin": "^14.4.0",
     "groq-sdk": "^1.6.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.4",
     "msedge-tts": "^2.0.7",
     "multer": "^2.1.1",
-    "openai": "^7.9.0",
     "pdfkit": "^0.20.2"
   },
   "devDependencies": {

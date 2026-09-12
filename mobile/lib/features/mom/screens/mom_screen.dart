@@ -237,6 +237,60 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
     }
   }
 
+  bool _isSavingOriginalAudio = false;
+
+  Future<String?> _downloadOriginalAudioLocally() async {
+    if (_localAudioPath != null && File(_localAudioPath!).existsSync()) {
+      return _localAudioPath;
+    }
+    if (_audioFileName == null || _audioFileName!.isEmpty) return null;
+    try {
+      setState(() => _isSavingOriginalAudio = true);
+      final String url = '${ApiConstants.serverBaseUrl}/uploads/$_audioFileName';
+      final String fileName = _audioFileName!;
+      final tempDir = await getTemporaryDirectory();
+      final savePath = '${tempDir.path}/$fileName';
+      
+      final client = ApiClient();
+      await client.dio.download(url, savePath);
+      return savePath;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to download original audio: $e'), backgroundColor: Colors.red));
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _isSavingOriginalAudio = false);
+    }
+  }
+
+  Future<void> _shareOriginalAudio() async {
+    final path = await _downloadOriginalAudioLocally();
+    if (path != null) {
+      final xFile = XFile(path);
+      await Share.shareXFiles([xFile], text: 'Original Recording - $_meetingTitle');
+    }
+  }
+
+  Future<void> _saveOriginalAudio() async {
+    final path = await _downloadOriginalAudioLocally();
+    if (path != null) {
+      final docDir = await getApplicationDocumentsDirectory();
+      final fileName = path.split('/').last;
+      final newPath = '${docDir.path}/$fileName';
+      await File(path).copy(newPath);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Original Audio saved to Documents folder!'),
+            backgroundColor: AppTheme.primaryColor,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
   void _populateControllers(Map<String, dynamic> mom) {
     _summaryController.text = mom['meetingSummary'] ?? '';
     _conclusionController.text = mom['conclusion'] ?? '';
@@ -1101,6 +1155,89 @@ class _MOMScreenState extends ConsumerState<MOMScreen> {
                         AudioPlayerWidget(
                           audioUrl: _localAudioPath ?? '${ApiConstants.serverBaseUrl}/uploads/$_audioFileName',
                           title: 'Original Recording - $_meetingTitle',
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE2E8F0),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.mic_rounded, size: 13, color: Color(0xFF475569)),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Full Raw Audio',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isSavingOriginalAudio)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 12),
+                                    child: SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF94A3B8)),
+                                    ),
+                                  )
+                                else ...[
+                                  InkWell(
+                                    onTap: _shareOriginalAudio,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.share_rounded, size: 12, color: Color(0xFF64748B)),
+                                          SizedBox(width: 4),
+                                          Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: _saveOriginalAudio,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.download_rounded, size: 12, color: Color(0xFF64748B)),
+                                          SizedBox(width: 4),
+                                          Text('Save', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 14),
                       ],

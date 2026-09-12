@@ -2,6 +2,7 @@ const fs = require('fs');
 const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');
+const { loadConfigFromFirebase } = require('./services/firebaseConfigLoader');
 
 // Ensure upload directory exists
 if (!fs.existsSync(env.upload.dir)) {
@@ -10,6 +11,9 @@ if (!fs.existsSync(env.upload.dir)) {
 
 // Start Server
 const startServer = async () => {
+  // Load remote API keys from Firebase Firestore before starting
+  await loadConfigFromFirebase();
+
   await connectDB().then(() => require('./utils/seedTeam')());
 
   const server = app.listen(env.port, () => {

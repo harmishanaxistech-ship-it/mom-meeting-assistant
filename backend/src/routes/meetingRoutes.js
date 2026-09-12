@@ -206,7 +206,12 @@ router.post('/:id/audio-summary', async (req, res, next) => {
       participants: meeting?.participants || [],
       agenda: meeting?.agenda || mom.agenda || '',
     };
-    const script = await audioSummaryService.generateScript(momPayload, language);
+
+    const TeamKnowledge = require('../models/TeamKnowledge');
+    const knowledgeDoc = await TeamKnowledge.findOne({ userId: req.user._id });
+    const teamKnowledge = knowledgeDoc ? knowledgeDoc.learnedContext : '';
+
+    const script = await audioSummaryService.generateScript(momPayload, meeting, teamKnowledge, language);
 
     // 3. Synthesize speech to MP3
     const audioResult = await audioSummaryService.textToSpeech(script, language, meetingId);

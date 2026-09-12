@@ -1,54 +1,33 @@
-const env = require('../config/env');
 const MockSpeechToTextProvider = require('./speech/MockSpeechToTextProvider');
-const OpenAISpeechToTextProvider = require('./speech/OpenAISpeechToTextProvider');
-const GroqSpeechToTextProvider = require('./speech/GroqSpeechToTextProvider');
+const GeminiSpeechToTextProvider = require('./speech/GeminiSpeechToTextProvider');
 
 const MockAIProvider = require('./ai/MockAIProvider');
-const OpenAIAIProvider = require('./ai/OpenAIAIProvider');
-const GroqAIProvider = require('./ai/GroqAIProvider');
 const GeminiAIProvider = require('./ai/GeminiAIProvider');
 
 const MockTranslationProvider = require('./translation/MockTranslationProvider');
-const OpenAITranslationProvider = require('./translation/OpenAITranslationProvider');
-const GroqTranslationProvider = require('./translation/GroqTranslationProvider');
+const GeminiTranslationProvider = require('./translation/GeminiTranslationProvider');
 
-// Service factory following Rule 1 & Section 30-32
+const env = require('../config/env');
+
 const getSTTProvider = () => {
-  switch (env.providers.stt.toLowerCase()) {
-    case 'groq':
-      return new GroqSpeechToTextProvider();
-    case 'openai':
-      return new OpenAISpeechToTextProvider();
-    case 'mock':
-    default:
-      return new MockSpeechToTextProvider();
+  if (env.providers.stt.toLowerCase() === 'mock') {
+    return new MockSpeechToTextProvider();
   }
+  return new GeminiSpeechToTextProvider();
 };
 
 const getAIProvider = () => {
-  switch (env.providers.ai.toLowerCase()) {
-    case 'gemini':
-      return new GeminiAIProvider();
-    case 'groq':
-      return new GroqAIProvider();
-    case 'openai':
-      return new OpenAIAIProvider();
-    case 'mock':
-    default:
-      return new MockAIProvider();
+  if (env.providers.ai.toLowerCase() === 'mock') {
+    return new MockAIProvider();
   }
+  return new GeminiAIProvider();
 };
 
 const getTranslationProvider = () => {
-  switch (env.providers.translation.toLowerCase()) {
-    case 'groq':
-      return new GroqTranslationProvider();
-    case 'openai':
-      return new OpenAITranslationProvider();
-    case 'mock':
-    default:
-      return new MockTranslationProvider();
+  if (env.providers.translation.toLowerCase() === 'mock') {
+    return new MockTranslationProvider();
   }
+  return new GeminiTranslationProvider();
 };
 
 module.exports = {

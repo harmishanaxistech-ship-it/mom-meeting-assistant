@@ -296,8 +296,12 @@ const processMeeting = async (req, res, next) => {
           }
         }
 
+        const TeamKnowledge = require('../models/TeamKnowledge');
+        const knowledgeDoc = await TeamKnowledge.findOne({ userId: meeting.userId });
+        const teamKnowledge = knowledgeDoc ? knowledgeDoc.learnedContext : '';
+
         const aiProvider = getAIProvider();
-        const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext });
+        const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext, teamKnowledge });
 
         job.currentStage = 'mom_generation';
         job.progressPercent = 90;
@@ -308,6 +312,10 @@ const processMeeting = async (req, res, next) => {
           { meetingId: meeting._id, ...momData, language: 'en' },
           { upsert: true, returnDocument: 'after' }
         );
+
+        // Update Permanent Team Knowledge in background
+        const { updateTeamKnowledge } = require('../services/ai/knowledgeService');
+        updateTeamKnowledge(meeting.userId, momData, meeting._id).catch(e => console.error(e));
 
         // Automatically pre-generate the English PDF document
         try {

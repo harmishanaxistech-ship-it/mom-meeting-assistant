@@ -1,9 +1,12 @@
 class ApiConstants {
-  // Local USB Testing via adb reverse:
-  // static const String serverBaseUrl = 'http://127.0.0.1:5001';
-  // Live Server URL:
-  static const String serverBaseUrl = 'https://noteaxapi.anaxistech.com';
-  // static const String serverBaseUrl = 'http://10.0.2.2:5001'; // Android Emulator
+  // Option 1: Local Wi-Fi Testing (Mac IP Address)
+  // static const String serverBaseUrl = 'http://192.168.1.21:5001';
+  
+  // Option 2: Ngrok URL (Paste your Ngrok HTTPS link here)
+  static const String serverBaseUrl = 'https://thinness-embroider-gizzard.ngrok-free.dev';
+  
+  // Option 3: Live Server URL
+  // static const String serverBaseUrl = 'https://noteaxapi.anaxistech.com';
 
   static const String baseUrl = '$serverBaseUrl/api';
 

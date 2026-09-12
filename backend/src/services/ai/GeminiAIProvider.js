@@ -16,11 +16,7 @@ class GeminiAIProvider extends AIProvider {
    * Retry wrapper with exponential back-off and model fallback for 503 / overloaded errors.
    */
   async _retryGenerate(prompt, maxRetries = 3) {
-    const candidateModels = [
-      this.model || 'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-    ];
+    const candidateModels = [this.model || 'gemini-3.6-flash'];
     // Remove duplicate model names
     const modelsToTry = [...new Set(candidateModels)];
 
@@ -47,7 +43,10 @@ class GeminiAIProvider extends AIProvider {
             err.message?.toLowerCase().includes('resource_exhausted');
 
           if (isOverload && attempt < maxRetries) {
-            const waitMs = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+            let waitMs = 2000 * Math.pow(2, attempt - 1);
+            if (err.message?.includes('429') || err.message?.toLowerCase().includes('quota')) {
+               waitMs = 25000; // Wait 25 seconds for rate limit
+            } // 2s, 4s, 8s
             console.warn(`[Gemini AI] Model ${currentModel} overloaded (attempt ${attempt}/${maxRetries}). Retrying in ${waitMs}ms...`);
             await new Promise((r) => setTimeout(r, waitMs));
           } else if (isOverload) {
@@ -59,8 +58,34 @@ class GeminiAIProvider extends AIProvider {
         }
       }
     }
-    throw lastErr;
+
+    
+    console.warn('[GeminiAIProvider] All Gemini models failed. Falling back to Groq llama-3.1-8b-instant...');
+    try {
+      
+      const Groq = require('groq-sdk');
+      const env = require('../../config/env');
+      const groqClient = new Groq({ apiKey: env.groqApiKey || process.env.GROQ_API_KEY });
+      
+      // Dynamically fetch available model to prevent 404/Decommission errors
+      const modelsPage = await groqClient.models.list();
+      const activeModels = modelsPage.data.filter(m => !m.id.includes('whisper') && !m.id.includes('vision'));
+      const fallbackModel = activeModels.length > 0 ? activeModels[0].id : 'mixtral-8x7b-32768';
+      console.log(`[Groq Fallback] Dynamically selected model: ${fallbackModel}`);
+
+      const gRes = await groqClient.chat.completions.create({
+        model: fallbackModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
+      });
+      return gRes.choices[0]?.message?.content?.trim() || '';
+    } catch (groqErr) {
+      console.error('[GeminiAIProvider] Groq ultimate fallback failed:', groqErr.message);
+      throw lastErr;
+    }
   }
+
 
   async generateMOM(meetingData, transcriptData, options = {}) {
     const rawTranscript =
@@ -99,10 +124,11 @@ Your output must match the highest global corporate standards used in Fortune 50
 ═══════════════════════════════════════════
 MARKET-STANDARD MOM GUIDELINES:
 ═══════════════════════════════════════════
-1. PROFESSIONAL CORPORATE TONE:
-   - Use crisp, objective, authoritative business language (e.g., "The team deliberated on...", "It was resolved to...", "Key dependencies were identified around...").
-   - Eliminate colloquialisms, conversational filler words, stuttering, and informal banter.
-   - Present information logically with high clarity, structure, and readability.
+1. DYNAMIC TONE & VOCABULARY MATCHING (ADAPTIVE LEARNING):
+   - Deeply analyze the transcript to determine the exact language, vocabulary complexity, and tone used by the speakers.
+   - If the speakers use simple, casual, or common everyday words, YOUR output MUST use simple, easy-to-understand language. Do not artificially elevate simple language to complex corporate jargon.
+   - If the speakers use highly technical, advanced, or high-level vocabulary, YOUR output MUST match that high-level professional tone.
+   - You must mirror the complexity of the meeting precisely, while remaining clear and structured. Eliminate conversational filler words, stuttering, and informal banter, but preserve the exact language level.
 
 2. TOPIC CONSOLIDATION & UNIFIED CLUSTERING (CRITICAL - NO SPLIT TOPICS):
    - Consolidate all discussions belonging to the same project, application, feature, or theme into EXACTLY ONE comprehensive point in "keyDiscussionPoints".
@@ -140,12 +166,17 @@ MARKET-STANDARD MOM GUIDELINES:
    - Correct technical terminology (e.g., "Flutter", "VoIP", "Kubernetes", "Jira", "AWS", "Figma", "Stripe").
    - Replace phonetically garbled names with the exact match from VERIFIED PARTICIPANTS LIST (e.g., "Rajesh" -> "Rakesh", "Dharmic" -> "Dharmesh").
 
+8. CONTINUOUS LEARNING & PERMANENT CONTEXT:
+   - Carefully review the 'PERMANENT TEAM KNOWLEDGE & RULES' section below (if provided).
+   - Use this context to understand established common sense rules, ongoing project backgrounds, or specific user preferences that were learned from previous meetings.
+   - Do NOT contradict established knowledge or treat known subjects as brand new topics. Apply past context naturally.
+
 ═══════════════════════════════════════════
 REQUIRED JSON FORMAT:
 ═══════════════════════════════════════════
 Respond strictly with valid JSON (no markdown fences, no explanatory text):
 {
-  "meetingSummary": "Executive summary in 3-4 professional business paragraphs outlining meeting objective, critical discussion themes, resolutions, and forward commitments.",
+  "meetingSummary": "Executive summary in 3-4 paragraphs reflecting the exact tone and vocabulary level of the meeting.",
   "agenda": [
     "Core Agenda Topic 1 discussed in meeting",
     "Core Agenda Topic 2",
@@ -191,6 +222,7 @@ Respond strictly with valid JSON (no markdown fences, no explanatory text):
     const userPrompt = `VERIFIED PARTICIPANTS LIST:
 ${participantsNumbered || 'None specified'}
 
+${options.teamKnowledge ? '\nPERMANENT TEAM KNOWLEDGE & RULES:\n' + options.teamKnowledge + '\n' : ''}
 ${historyBlock}MEETING DETAILS:
 Title: ${meetingData.title || 'Business Meeting'}
 Type: ${meetingData.meetingType || 'General'}

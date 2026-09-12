@@ -26,7 +26,7 @@ const createMeeting = async (req, res, next) => {
 
     const meeting = await Meeting.create({
       userId: req.user._id,
-      title: title.trim(),
+      title: title.trim().charAt(0).toUpperCase() + title.trim().slice(1),
       meetingType: meetingType || 'General Meeting',
       dateTime: dateTime ? new Date(dateTime) : new Date(),
       location: location ? location.trim() : '',
@@ -133,11 +133,20 @@ const updateMeeting = async (req, res, next) => {
       });
     }
 
-    if (title !== undefined) meeting.title = title.trim();
+    if (title !== undefined) meeting.title = title.trim().charAt(0).toUpperCase() + title.trim().slice(1);
     if (meetingType !== undefined) meeting.meetingType = meetingType;
     if (dateTime !== undefined) meeting.dateTime = new Date(dateTime);
     if (location !== undefined) meeting.location = location.trim();
-    if (participants !== undefined) meeting.participants = participants;
+    
+    const toTitleCase = (str) =>
+      str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+
+    if (participants !== undefined) {
+      meeting.participants = Array.isArray(participants)
+        ? participants.map((p) => toTitleCase(p.trim())).filter(Boolean)
+        : [];
+    }
+
     if (agenda !== undefined) meeting.agenda = agenda.trim();
     if (status !== undefined) meeting.status = status;
     if (duration !== undefined) meeting.duration = duration;
@@ -254,7 +263,11 @@ const regenerateMOM = async (req, res, next) => {
       }
     }
 
-    const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext });
+    const TeamKnowledge = require('../models/TeamKnowledge');
+    const knowledgeDoc = await TeamKnowledge.findOne({ userId: meeting.userId });
+    const teamKnowledge = knowledgeDoc ? knowledgeDoc.learnedContext : '';
+
+    const momData = await aiProvider.generateMOM(meeting, transcript, { pastContext, teamKnowledge });
 
     // Check if error summary was returned
     if (momData.meetingSummary && momData.meetingSummary.toLowerCase().includes('gemini error')) {
@@ -275,6 +288,10 @@ const regenerateMOM = async (req, res, next) => {
       },
       { upsert: true, returnDocument: 'after' }
     );
+
+    // Update Permanent Team Knowledge in background
+    const { updateTeamKnowledge } = require('../services/ai/knowledgeService');
+    updateTeamKnowledge(meeting.userId, momData, meeting._id).catch(e => console.error(e));
 
     // Update meeting status if needed
     if (meeting.status !== 'completed') {
