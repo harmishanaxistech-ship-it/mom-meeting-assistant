@@ -8,7 +8,12 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    email: {
+    companyId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Company',
+    required: false, // Set to true later when all users are migrated
+  },
+  email: {
       type: String,
       required: true,
       unique: true,

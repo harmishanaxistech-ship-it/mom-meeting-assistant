@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/app_constants.dart';
 import '../controllers/auth_controller.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
@@ -16,6 +18,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController(text: 'user@momassistant.com');
   final _passwordController = TextEditingController(text: 'Password123!');
   bool _obscurePassword = true;
+
+  String? _companyName;
+  String? _logoUrl;
+  bool _isLoadingBranding = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCompanyBranding();
+  }
+
+  Future<void> _fetchCompanyBranding() async {
+    try {
+      final dio = Dio();
+      final response = await dio.get('${ApiConstants.baseUrl}/companies/${ApiConstants.companyCode}');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final data = response.data['data'];
+        if (mounted) {
+          setState(() {
+            _companyName = data['name'];
+            _logoUrl = data['logoUrl'];
+            _isLoadingBranding = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('Failed to load branding: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _isLoadingBranding = false;
+      });
+    }
+  }
+
 
   @override
   void dispose() {
@@ -91,54 +129,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // App Branding Icon & Title
+                  // Dynamic Branding Icon
                   Center(
-                    child: Container(
-                      width: 84,
-                      height: 84,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF0F172A), Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF1E3A8A).withAlpha(80),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          const Icon(
-                            Icons.mic_rounded,
-                            size: 40,
-                            color: Colors.white,
-                          ),
-                          Positioned(
-                            top: 14,
-                            right: 14,
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF38BDF8),
-                                shape: BoxShape.circle,
+                    child: _isLoadingBranding
+                        ? const SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: CircularProgressIndicator(),
+                          )
+                        : (_logoUrl != null && _logoUrl!.isNotEmpty)
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Image.network(
+                                  _logoUrl!,
+                                  width: 84,
+                                  height: 84,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.business, size: 84),
+                                ),
+                              )
+                            : Container(
+                                width: 84,
+                                height: 84,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF0F172A), Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF1E3A8A).withAlpha(80),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
+                                ),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    const Icon(Icons.mic_rounded, size: 40, color: Colors.white),
+                                    Positioned(
+                                      top: 14,
+                                      right: 14,
+                                      child: Container(
+                                        width: 10, height: 10,
+                                        decoration: const BoxDecoration(color: Color(0xFF38BDF8), shape: BoxShape.circle),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 20),
 
                   Text(
-                    AppConstants.appName,
+                    _companyName ?? AppConstants.appName,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 26,

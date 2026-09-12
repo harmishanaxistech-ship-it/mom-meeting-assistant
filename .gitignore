@@ -49,3 +49,4 @@ mobile/ios/.symlinks/
 .vscode/
 .idea/
 *.swp
+backend/firebase-service-account.json

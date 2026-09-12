@@ -3,7 +3,13 @@ const TeamMember = require('../models/TeamMember');
 // Get all team members
 exports.getTeamMembers = async (req, res, next) => {
   try {
-    const members = await TeamMember.find().sort({ name: 1 });
+    const query = {};
+    if (req.user.companyId) {
+      query.companyId = req.user.companyId;
+    } else {
+      query.userId = req.user._id;
+    }
+    const members = await TeamMember.find(query).sort({ name: 1 });
     // Return array of strings to match existing structure, or array of objects
     res.status(200).json({ success: true, data: members });
   } catch (err) {
@@ -17,10 +23,10 @@ exports.addTeamMember = async (req, res, next) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ success: false, error: 'Name is required' });
     
-    let member = await TeamMember.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+    let member = await TeamMember.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') }, $or: [{companyId: req.user.companyId}, {userId: req.user._id}] });
     if (member) return res.status(400).json({ success: false, error: 'Team member already exists' });
 
-    member = await TeamMember.create({ name });
+    member = await TeamMember.create({ name, companyId: req.user.companyId || null, userId: req.user._id });
     res.status(201).json({ success: true, data: member });
   } catch (err) {
     next(err);

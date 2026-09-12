@@ -3,10 +3,10 @@ class ApiConstants {
   // static const String serverBaseUrl = 'http://192.168.1.21:5001';
   
   // Option 2: Ngrok URL (Paste your Ngrok HTTPS link here)
-  static const String serverBaseUrl = 'https://thinness-embroider-gizzard.ngrok-free.dev';
+  // static const String serverBaseUrl = 'https://thinness-embroider-gizzard.ngrok-free.dev';
   
   // Option 3: Live Server URL
-  // static const String serverBaseUrl = 'https://noteaxapi.anaxistech.com';
+  static const String serverBaseUrl = 'https://noteaxapi.anaxistech.com';
 
   static const String baseUrl = '$serverBaseUrl/api';
 
@@ -15,4 +15,7 @@ class ApiConstants {
   static const String me = '/auth/me';
 
   static const String meetings = '/meetings';
+
+  // 🏢 White-Label Company Code (Change this for each app clone)
+  static const String companyCode = 'DEFAULT_COMPANY';
 }

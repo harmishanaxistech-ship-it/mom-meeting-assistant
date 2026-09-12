@@ -1,6 +1,7 @@
 const { generateToken } = require('../middleware/auth');
 const env = require('../config/env');
 const User = require('../models/User');
+const Company = require('../models/Company');
 
 /**
  * @desc    Auth user with static/database credentials & get JWT token
@@ -10,6 +11,15 @@ const User = require('../models/User');
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    const companyCode = req.headers['x-company-code'];
+    let companyId = null;
+
+    if (companyCode) {
+      const company = await Company.findOne({ name: new RegExp('^' + companyCode + '$', 'i') });
+      if (company) {
+        companyId = company._id;
+      }
+    }
 
     if (!email || !password) {
       return res.status(400).json({
@@ -32,6 +42,7 @@ const login = async (req, res, next) => {
           name: env.staticUser.name,
           email: normalizedEmail,
           password: env.staticUser.password, // will be hashed by User model hook
+          companyId: companyId,
         });
       }
 
@@ -53,6 +64,10 @@ const login = async (req, res, next) => {
     // Otherwise check existing DB users
     const user = await User.findOne({ email: normalizedEmail }).select('+password');
     if (user && (await user.matchPassword(password))) {
+      if (companyId && (!user.companyId || user.companyId.toString() !== companyId.toString())) {
+        user.companyId = companyId;
+        await user.save();
+      }
       const token = generateToken(user._id, user.email);
       return res.status(200).json({
         success: true,
